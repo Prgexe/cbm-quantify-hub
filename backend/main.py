@@ -114,7 +114,7 @@ POSTO_MAP = {
     # Coronel
     "CEL": "CORONEL", "COR": "CORONEL",
     # Tenente Coronel
-    "TEM CEL": "TENENTE CORONEL", "TEN CEL": "TENENTE CORONEL",
+    "TEN CEL": "TENENTE CORONEL", "TENCEL": "TENENTE CORONEL",
     "TC": "TENENTE CORONEL", "T CEL": "TENENTE CORONEL",
     "TENENTE-CORONEL": "TENENTE CORONEL",
     # Major
@@ -123,14 +123,14 @@ POSTO_MAP = {
     "CAP": "CAPITAO",
     # Tenente
     "TEN": "TENENTE",
-    "1 TEN": "1 TENENTE", "1TEN": "1 TENENTE",
-    "2 TEN": "2 TENENTE", "2TEN": "2 TENENTE",
+    "1 TEN": "1º TENENTE", "1TEN": "1º TENENTE", "1º TEN": "1º TENENTE",
+    "2 TEN": "2º TENENTE", "2TEN": "2º TENENTE", "2º TEN": "2º TENENTE",
     # Subtenente
-    "SUBTEN": "SUBTENENTE", "ST": "SUBTENENTE", "SUB TEN": "SUBTENENTE",
-    # Sargento
-    "1 SGT": "1 SARGENTO", "1SGT": "1 SARGENTO",
-    "2 SGT": "2 SARGENTO", "2SGT": "2 SARGENTO",
-    "3 SGT": "3 SARGENTO", "3SGT": "3 SARGENTO",
+    "SUBTEN": "SUBTENENTE", "ST": "SUBTENENTE", "SUB TEN": "SUBTENENTE", "SUB-TEN": "SUBTENENTE",
+    # Sargento (Onde estava o erro)
+    "1 SGT": "1º SARGENTo", "1SGT": "1º SARGENTO", "1º SGT": "1º SARGENTO", "1° SGT": "1º SARGENTO",
+    "2 SGT": "2º SARGENTO", "2SGT": "2º SARGENTO", "2º SGT": "2º SARGENTO", "2° SGT": "2º SARGENTO",
+    "3 SGT": "3º SARGENTO", "3SGT": "3º SARGENTO", "3º SGT": "3º SARGENTO", "3° SGT": "3º SARGENTO",
     # Cabo / Soldado
     "CB": "CABO", "SD": "SOLDADO", "SOL": "SOLDADO",
 }
@@ -138,8 +138,17 @@ POSTO_MAP = {
 def normalizar_posto(posto):
     if not posto:
         return posto
+    # Limpeza pesada: Remove símbolos de grau/ordinal e espaços duplos antes de buscar no mapa
     key = str(posto).strip().upper()
-    return POSTO_MAP.get(key, posto)
+    key = key.replace("°", "").replace("º", "") # Remove a bolinha para bater com as chaves do mapa
+    
+    # Tenta buscar no mapa. Se não achar, tenta limpar espaços internos (ex: "1  SGT")
+    normalized = POSTO_MAP.get(key)
+    if not normalized:
+        key_no_spaces = " ".join(key.split())
+        normalized = POSTO_MAP.get(key_no_spaces, posto)
+        
+    return normalized
 
 
 def normalizar_area(area: str, areas_consolidada: list) -> str:

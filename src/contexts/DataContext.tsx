@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 import * as XLSX from "xlsx";
+import { padronizarGraduacao } from "@/utils/formatadores";
 
 export interface MilitarRecord {
   id: string;
@@ -112,6 +113,13 @@ function parseSheet(ws: XLSX.WorkSheet, fileName: string): MilitarRecord[] {
     });
 
     if (rec.NOME_COMPLETO && rec.NOME_COMPLETO !== "") {
+      console.log("Original:", rec.POSTO_GRAD);
+
+     if (rec.POSTO_GRAD) {
+        rec.POSTO_GRAD = padronizarGraduacao(rec.POSTO_GRAD as string);
+        console.log("Formatado:", rec.POSTO_GRAD);
+      }
+
       records.push(rec as MilitarRecord);
     }
   }

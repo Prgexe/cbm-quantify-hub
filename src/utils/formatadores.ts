@@ -1,39 +1,29 @@
-// VARIAÇÕES
-const dicionarioGraduacoes: Record<string, string> = {
-  "1º SGT": "1º Sargento",
-  "2º SGT": "2º Sargento",
-  "3º SGT": "3º Sargento",
-  "1ºSGT": "1º Sargento",
-  "2ºSGT": "2º Sargento",
-  "3ºSGT": "3º Sargento",
-  "SUBTEN": "Subtenente",
-  "SUB TEN": "Subtenente",
-  "ST": "Subtenente",
-  "TEN CEL": "Tenente Coronel",
-  "TENCEL": "Tenente Coronel",
-  "CEL": "Coronel",
-  "MAJ": "Major",
-  "CAP": "Capitão",
-  "1º TEN": "1º Tenente",
-  "2º TEN": "2º Tenente",
-  "1ºTEN": "1º Tenente",
-  "2ºTEN": "2º Tenente",
-  "CB": "Cabo",
-  "SD": "Soldado",
-  // Adicione outras se precisar, como "ASP" -> "Aspirante"
-};
-
 export const padronizarGraduacao = (graduacaoBruta: string): string => {
   if (!graduacaoBruta) return "";
+
+  const textoLimpo = String(graduacaoBruta).trim();
+  const limpa = textoLimpo.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  // ESPIÃO FORENSE: Vai mostrar exatamente o que sobrou da palavra
+  console.log(`🕵️ Investigando: Original=[${graduacaoBruta}] -> Destruído=[${limpa}]`);
+
+  // Defesa contra erros de digitação onde usaram "i" ou "L" no lugar do 1
+  if ((limpa.includes("1") || limpa.includes("I") || limpa.includes("L")) && limpa.includes("SGT")) return "1º Sargento";
+  if ((limpa.includes("2") || limpa.includes("Z")) && limpa.includes("SGT")) return "2º Sargento";
+  if ((limpa.includes("3") || limpa.includes("E")) && limpa.includes("SGT")) return "3º Sargento";
   
-  // Limpa tudo: Maiúsculo, troca grau (°) por ordinal (º), 
-  // e transforma múltiplos espaços seguidos em um espaço só.
-  const siglaLimpa = graduacaoBruta
-    .toUpperCase()
-    .replace(/°/g, 'º')       // Corrige o símbolo de temperatura para o ordinal
-    .replace(/\s+/g, ' ')     // Remove espaços duplos ou invisíveis no meio
-    .trim();                  // Remove espaços nas pontas
+  if (limpa.includes("SUB") || limpa === "ST") return "Subtenente";
+  if (limpa.includes("TENCEL") || limpa.includes("TENCORONEL") || limpa === "TC") return "Tenente Coronel";
+  if (limpa === "CEL" || limpa.includes("CORONEL")) return "Coronel";
+  if (limpa === "MAJ" || limpa.includes("MAJOR")) return "Major";
+  if (limpa === "CAP" || limpa.includes("CAPITAO")) return "Capitão";
   
-  // Se existir no dicionário, retorna o nome correto. Se não, retorna como estava.
-  return dicionarioGraduacoes[siglaLimpa] || graduacaoBruta.trim();
+  if ((limpa.includes("1") || limpa.includes("I") || limpa.includes("L")) && limpa.includes("TEN")) return "1º Tenente";
+  if ((limpa.includes("2") || limpa.includes("Z")) && limpa.includes("TEN")) return "2º Tenente";
+  
+  if (limpa === "CB" || limpa.includes("CABO")) return "Cabo";
+  if (limpa === "SD" || limpa.includes("SOLDADO")) return "Soldado";
+
+  // SE CHEGAR AQUI, VAI MOSTRAR UM AVISO GRITANTE PARA PROVAR QUE O CÓDIGO RODOU
+  return "ERRO_SISTEMA: " + textoLimpo;
 };
