@@ -117,6 +117,7 @@ POSTO_MAP = {
     "TEN CEL": "TENENTE CORONEL", "TENCEL": "TENENTE CORONEL",
     "TC": "TENENTE CORONEL", "T CEL": "TENENTE CORONEL",
     "TENENTE-CORONEL": "TENENTE CORONEL",
+    "TEM CEL": "TENENTE CORONEL",
     # Major
     "MAJ": "MAJOR",
     # Capitao
@@ -128,7 +129,7 @@ POSTO_MAP = {
     # Subtenente
     "SUBTEN": "SUBTENENTE", "ST": "SUBTENENTE", "SUB TEN": "SUBTENENTE", "SUB-TEN": "SUBTENENTE",
     # Sargento (Onde estava o erro)
-    "1 SGT": "1º SARGENTo", "1SGT": "1º SARGENTO", "1º SGT": "1º SARGENTO", "1° SGT": "1º SARGENTO",
+    "1 SGT": "1º SARGENTO", "1SGT": "1º SARGENTO", "1º SGT": "1º SARGENTO", "1° SGT": "1º SARGENTO",
     "2 SGT": "2º SARGENTO", "2SGT": "2º SARGENTO", "2º SGT": "2º SARGENTO", "2° SGT": "2º SARGENTO",
     "3 SGT": "3º SARGENTO", "3SGT": "3º SARGENTO", "3º SGT": "3º SARGENTO", "3° SGT": "3º SARGENTO",
     # Cabo / Soldado
