@@ -26,9 +26,14 @@ const dicionarioGraduacoes: Record<string, string> = {
 export const padronizarGraduacao = (graduacaoBruta: string): string => {
   if (!graduacaoBruta) return "";
   
-  // Limpa espaços em branco e deixa tudo maiúsculo para evitar erros de digitação (ex: " 1º Sgt ")
-  const siglaLimpa = graduacaoBruta.trim().toUpperCase();
+  // Limpa tudo: Maiúsculo, troca grau (°) por ordinal (º), 
+  // e transforma múltiplos espaços seguidos em um espaço só.
+  const siglaLimpa = graduacaoBruta
+    .toUpperCase()
+    .replace(/°/g, 'º')       // Corrige o símbolo de temperatura para o ordinal
+    .replace(/\s+/g, ' ')     // Remove espaços duplos ou invisíveis no meio
+    .trim();                  // Remove espaços nas pontas
   
-  // Se existir no dicionário, retorna o nome correto. Se não, retorna o que estava lá mesmo.
+  // Se existir no dicionário, retorna o nome correto. Se não, retorna como estava.
   return dicionarioGraduacoes[siglaLimpa] || graduacaoBruta.trim();
 };
