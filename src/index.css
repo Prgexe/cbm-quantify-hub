@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --background: 210 20% 96%;
+    --foreground: 215 30% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 30% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 30% 12%;
+
+    --primary: 215 50% 23%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 15% 88%;
+    --secondary-foreground: 215 30% 12%;
+
+    --muted: 210 15% 93%;
+    --muted-foreground: 215 10% 45%;
+
+    --accent: 0 72% 42%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214 20% 85%;
+    --input: 214 20% 85%;
+    --ring: 215 50% 23%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 215 50% 18%;
+    --sidebar-foreground: 210 40% 95%;
+    --sidebar-primary: 210 40% 98%;
+    --sidebar-primary-foreground: 215 50% 18%;
+    --sidebar-accent: 215 45% 28%;
+    --sidebar-accent-foreground: 210 40% 95%;
+    --sidebar-border: 215 40% 30%;
+    --sidebar-ring: 0 72% 42%;
+
+    --success: 142 60% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 10%;
+    --info: 210 80% 50%;
+    --info-foreground: 0 0% 100%;
+
+    --row-yellow: 48 100% 90%;
+    --row-green: 142 60% 88%;
+    --row-red: 0 80% 92%;
+    --row-blue: 210 80% 90%;
+    --row-orange: 25 95% 90%;
+  }
+
+  .dark {
+    --background: 215 30% 8%;
+    --foreground: 210 40% 95%;
+    --card: 215 30% 12%;
+    --card-foreground: 210 40% 95%;
+    --popover: 215 30% 12%;
+    --popover-foreground: 210 40% 95%;
+    --primary: 210 40% 70%;
+    --primary-foreground: 215 30% 8%;
+    --secondary: 215 20% 20%;
+    --secondary-foreground: 210 40% 95%;
+    --muted: 215 20% 18%;
+    --muted-foreground: 215 10% 55%;
+    --accent: 0 65% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 215 20% 22%;
+    --input: 215 20% 22%;
+    --ring: 210 40% 70%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+}
