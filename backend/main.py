@@ -7,8 +7,8 @@ from copy import copy
 import io
 import re
 import zipfile
-from collections import Counter
-from typing import List
+from collections import Counter, OrderedDict
+from typing import List, Dict, Tuple
 
 app = FastAPI(title="CBMERJ Almoxarifado API")
 
@@ -27,19 +27,9 @@ app.add_middleware(
 
 
 def repair_xlsx(data: bytes) -> bytes:
-    """
-    Repara xlsx gerado por LibreOffice/Google Sheets ou com XML invalido.
-    - Remove caracteres de controle ilegais
-    - Remove arquivos nao suportados pelo openpyxl (docProps/custom.xml)
-    - Limpa referencia do custom.xml no Content_Types.xml
-    """
     buf = io.BytesIO(data)
     zin = zipfile.ZipFile(buf, "r")
-    names = zin.namelist()
-
     SKIP = {"docProps/custom.xml"}
-
-    # First pass: build repaired zip
     out = io.BytesIO()
     zout = zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED)
     for item in zin.infolist():
@@ -49,7 +39,6 @@ def repair_xlsx(data: bytes) -> bytes:
         if item.filename.endswith(".xml") or item.filename.endswith(".rels"):
             raw_str = raw.decode("utf-8", errors="replace")
             raw_str = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", raw_str)
-            # Remove custom.xml override from Content_Types
             if item.filename == "[Content_Types].xml":
                 raw_str = re.sub(r'<Override[^>]*custom\.xml[^/]*/>', '', raw_str)
             raw = raw_str.encode("utf-8")
@@ -60,35 +49,14 @@ def repair_xlsx(data: bytes) -> bytes:
 
 
 def load_workbook_safe(data: bytes, read_only: bool = False, data_only: bool = False):
-    """
-    Tenta carregar o workbook normalmente; se falhar, repara e tenta novamente.
-    Suporta arquivos do Excel, LibreOffice e Google Sheets.
-    """
-    import traceback, logging
-    logger = logging.getLogger(__name__)
-
-    # Attempt 1: direct load
     try:
-        return openpyxl.load_workbook(
-            io.BytesIO(data), read_only=read_only, data_only=data_only
-        )
+        return openpyxl.load_workbook(io.BytesIO(data), read_only=read_only, data_only=data_only)
     except Exception as first_err:
-        logger.error(f"Attempt 1 failed: {first_err}")
-
-    # Attempt 2: repair XML then load
-    try:
-        repaired = repair_xlsx(data)
-        return openpyxl.load_workbook(
-            io.BytesIO(repaired), read_only=read_only, data_only=data_only
-        )
-    except Exception as second_err:
-        logger.error(f"Attempt 2 failed: {second_err}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(
-            400,
-            f"Nao foi possivel ler o arquivo Excel. Verifique se nao esta corrompido "
-            f"ou salve-o novamente pelo Excel. Detalhe: {first_err}"
-        )
+        try:
+            repaired = repair_xlsx(data)
+            return openpyxl.load_workbook(io.BytesIO(repaired), read_only=read_only, data_only=data_only)
+        except Exception:
+            raise HTTPException(400, f"Nao foi possivel ler o arquivo Excel. Detalhe: {first_err}")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -103,7 +71,6 @@ def get_color(ws, row_idx: int) -> str:
         if fill.fill_type is None or fill.fill_type == "none":
             return "FFFFFF"
         rgb = fill.fgColor.rgb
-        # 00000000 means transparent/no color, treat as white
         if rgb in ("00000000", "000000"):
             return "FFFFFF"
         return rgb[-6:] if len(rgb) > 6 else rgb
@@ -111,48 +78,32 @@ def get_color(ws, row_idx: int) -> str:
         return "FFFFFF"
 
 POSTO_MAP = {
-    # Coronel
     "CEL": "CORONEL", "COR": "CORONEL",
-    # Tenente Coronel
     "TEN CEL": "TENENTE CORONEL", "TENCEL": "TENENTE CORONEL",
-    "TEM CEL": "TENENTE CORONEL", "TEMCEL": "TENENTE CORONEL", # Suporte ao erro com 'M'
+    "TEM CEL": "TENENTE CORONEL", "TEMCEL": "TENENTE CORONEL",
     "TC": "TENENTE CORONEL", "T CEL": "TENENTE CORONEL",
     "TENENTE-CORONEL": "TENENTE CORONEL",
-    # Major
     "MAJ": "MAJOR",
-    # Capitao
     "CAP": "CAPITAO",
-    # Tenente
     "TEN": "TENENTE",
     "1 TEN": "1º TENENTE", "1TEN": "1º TENENTE", "1º TEN": "1º TENENTE",
     "2 TEN": "2º TENENTE", "2TEN": "2º TENENTE", "2º TEN": "2º TENENTE",
-    # Subtenente
     "SUBTEN": "SUBTENENTE", "ST": "SUBTENENTE", "SUB TEN": "SUBTENENTE", "SUB-TEN": "SUBTENENTE",
-    # Sargento (CORRIGIDO: "SARGENTO" todo em maiúsculo)
     "1 SGT": "1º SARGENTO", "1SGT": "1º SARGENTO", "1º SGT": "1º SARGENTO", "1° SGT": "1º SARGENTO",
     "2 SGT": "2º SARGENTO", "2SGT": "2º SARGENTO", "2º SGT": "2º SARGENTO", "2° SGT": "2º SARGENTO",
     "3 SGT": "3º SARGENTO", "3SGT": "3º SARGENTO", "3º SGT": "3º SARGENTO", "3° SGT": "3º SARGENTO",
-    # Cabo / Soldado
     "CB": "CABO", "SD": "SOLDADO", "SOL": "SOLDADO",
 }
 
 def normalizar_posto(posto):
     if not posto:
         return posto
-    
-    # 1. Limpeza inicial
     key = str(posto).strip().upper()
-    
-    # 2. Tenta busca exata primeiro (com a bolinha/grau)
     if key in POSTO_MAP:
         return POSTO_MAP[key]
-        
-    # 3. Se não achou, remove a bolinha e tenta de novo
     key_limpa = key.replace("°", "").replace("º", "")
     if key_limpa in POSTO_MAP:
         return POSTO_MAP[key_limpa]
-        
-    # 4. Tenta remover espaços duplos
     key_no_spaces = " ".join(key_limpa.split())
     return POSTO_MAP.get(key_no_spaces, posto)
 
@@ -173,53 +124,188 @@ def normalizar_area(area: str, areas_consolidada: list) -> str:
     return area.strip()
 
 
-# ── Leitura de planilha individual ───────────────────────────────────────────
-
 def norm(s) -> str:
     return str(s or "").strip().upper()
 
-def read_individual_sheet(ws) -> List[dict]:
-    raw = list(ws.iter_rows(values_only=True))
-    if len(raw) < 4:
-        return []
+# Colunas fixas/estruturais que não são materiais
+FIXED_COLUMNS = {"QTD", "AREA", "ÁREA", "UNIDADE", "UNIDADE (FINAL)", "POSTO/GRAD",
+                  "QUADRO", "NOME COMPLETO", "RG", "TAMANHOS"}
+
+def is_material_column(col_name: str) -> bool:
+    """Retorna True se a coluna é de material (não é estrutural)."""
+    n = norm(col_name)
+    if not n:
+        return False
+    return n not in FIXED_COLUMNS
+
+
+# ── Leitura DINÂMICA de planilha individual ──────────────────────────────────
+
+def find_header_rows(raw: list) -> Tuple[int, Dict[int, str], bool]:
+    """
+    Detecta linhas de cabeçalho e retorna:
+    - data_start: índice da primeira linha de dados
+    - col_map: {col_index: col_name}
+    - is_format_b: se é formato B (cabeçalho em 2 linhas)
+    """
+    is_format_b = len(raw) > 1 and any(norm(c) == "QTD" for c in (raw[1] or []))
 
     col_map = {}
 
-    def map_cell(n, i):
-        if n == "QTD":                                          col_map[i] = "QTD"
-        elif n in ("AREA", "AREA"):                             col_map[i] = "AREA"
-        elif n in ("UNIDADE (FINAL)", "UNIDADE"):               col_map[i] = "UNIDADE"
-        elif n == "POSTO/GRAD":                                 col_map[i] = "POSTO_GRAD"
-        elif n == "QUADRO":                                     col_map[i] = "QUADRO"
-        elif n == "NOME COMPLETO":                              col_map[i] = "NOME_COMPLETO"
-        elif n == "RG":                                         col_map[i] = "RG"
-        elif n in ("CAMISETA DE GV", "CAMISETA GV"):            col_map[i] = "CAMISETA_GV"
-        elif n.startswith("CAMISA U"):                          col_map[i] = "CAMISA_UV"
-        elif "SHORT JOHN" in n:                                 col_map[i] = "SHORT_JOHN"
-
-    is_format_b = any(norm(c) == "QTD" for c in (raw[1] or []))
     if is_format_b:
-        for i, c in enumerate(raw[1] or []): map_cell(norm(c), i)
-        for i, c in enumerate(raw[2] or []): map_cell(norm(c), i)
+        # Formato B: row[1] tem colunas fixas, row[2] tem materiais
+        for i, c in enumerate(raw[1] or []):
+            n = norm(c)
+            if n:
+                col_map[i] = n
+        for i, c in enumerate(raw[2] or []):
+            n = norm(c)
+            if n and i not in col_map:
+                col_map[i] = n
+        return 3, col_map, True
     else:
-        for i, c in enumerate(raw[2] or []): map_cell(norm(c), i)
+        # Formato A: row[2] tem todas as colunas
+        for i, c in enumerate(raw[2] or []):
+            n = norm(c)
+            if n:
+                col_map[i] = n
+        return 3, col_map, False
+
+
+def normalize_col_name(n: str) -> str:
+    """Normaliza nomes de colunas para chaves padronizadas."""
+    n = n.strip().upper()
+    if n in ("ÁREA", "AREA"):
+        return "AREA"
+    if n in ("UNIDADE (FINAL)", "UNIDADE"):
+        return "UNIDADE"
+    if n == "POSTO/GRAD":
+        return "POSTO_GRAD"
+    if n == "NOME COMPLETO":
+        return "NOME_COMPLETO"
+    # Para materiais e outros campos, mantém o nome original normalizado
+    return n
+
+
+def read_individual_sheet(ws) -> Tuple[List[dict], List[str]]:
+    """
+    Lê uma aba da planilha individual.
+    Retorna (records, material_columns) onde material_columns são os nomes
+    das colunas de material encontradas.
+    """
+    raw = list(ws.iter_rows(values_only=True))
+    if len(raw) < 4:
+        return [], []
+
+    data_start, col_map, is_format_b = find_header_rows(raw)
+
+    # Identifica colunas de material
+    material_cols = []  # lista de (col_index, col_name_original)
+    fixed_map = {}      # col_index -> normalized_key
+
+    for idx, col_name in col_map.items():
+        if is_material_column(col_name):
+            material_cols.append((idx, col_name))
+        else:
+            fixed_map[idx] = normalize_col_name(col_name)
+
+    material_names = [name for _, name in material_cols]
 
     records = []
-    for row in raw[3:]:
+    for row in raw[data_start:]:
         if not row or all(str(v or "").strip() == "" for v in row):
             continue
-        rec = {f: "" for f in ["QTD","AREA","UNIDADE","POSTO_GRAD","QUADRO","NOME_COMPLETO","RG","CAMISETA_GV","CAMISA_UV","SHORT_JOHN"]}
-        for idx, val in enumerate(row):
-            field = col_map.get(idx)
-            if field:
-                rec[field] = str(val or "").strip()
-        rec["POSTO_GRAD"] = normalizar_posto(rec["POSTO_GRAD"]) or rec["POSTO_GRAD"]
-        if rec["NOME_COMPLETO"]:
+
+        rec = {"QTD": "", "AREA": "", "UNIDADE": "", "POSTO_GRAD": "",
+               "QUADRO": "", "NOME_COMPLETO": "", "RG": ""}
+
+        # Campos fixos
+        for idx, key in fixed_map.items():
+            if idx < len(row):
+                rec[key] = str(row[idx] or "").strip()
+
+        # Campos de material (dinâmicos)
+        for idx, col_name in material_cols:
+            if idx < len(row):
+                rec[col_name] = str(row[idx] or "").strip()
+
+        rec["POSTO_GRAD"] = normalizar_posto(rec.get("POSTO_GRAD", "")) or rec.get("POSTO_GRAD", "")
+
+        if rec.get("NOME_COMPLETO"):
             records.append(rec)
-    return records
+
+    _log.info(f"[read_individual] Colunas de material detectadas: {material_names}")
+    _log.info(f"[read_individual] {len(records)} registros lidos")
+
+    return records, material_names
 
 
-# ── Endpoint: info da planilha consolidada ───────────────────────────────────
+# ── Leitura do cabeçalho da consolidada ──────────────────────────────────────
+
+def read_consolidada_header(ws) -> Tuple[int, Dict[int, str], Dict[str, int]]:
+    """
+    Lê o cabeçalho da aba da consolidada.
+    Retorna:
+    - header_row: número da linha do cabeçalho
+    - col_map: {col_index: col_name}
+    - name_to_col: {col_name_upper: col_index}
+    """
+    header_row = 3  # default
+    for ri in range(1, 10):
+        v = ws.cell(row=ri, column=1).value
+        if v is not None and norm(v) == "QTD":
+            header_row = ri
+            break
+
+    col_map = {}
+    name_to_col = {}
+    for col in range(1, ws.max_column + 1):
+        val = ws.cell(row=header_row, column=col).value
+        if val:
+            n = norm(val)
+            col_map[col] = n
+            name_to_col[n] = col
+
+    # Também verifica a linha seguinte para cabeçalhos de 2 linhas
+    for col in range(1, ws.max_column + 1):
+        if col not in col_map or not col_map[col]:
+            val = ws.cell(row=header_row + 1, column=col).value
+            if val:
+                n = norm(val)
+                col_map[col] = n
+                if n not in name_to_col:
+                    name_to_col[n] = col
+
+    return header_row, col_map, name_to_col
+
+
+def fuzzy_match_column(material_name: str, consolidada_cols: Dict[str, int]) -> int | None:
+    """
+    Tenta encontrar a coluna correspondente na consolidada para um material.
+    Usa matching exato primeiro, depois parcial.
+    """
+    n = norm(material_name)
+
+    # Exato
+    if n in consolidada_cols:
+        return consolidada_cols[n]
+
+    # Parcial: verifica se o nome do material está contido em alguma coluna
+    for col_name, col_idx in consolidada_cols.items():
+        if n in col_name or col_name in n:
+            return col_idx
+
+    # Normaliza removendo acentos comuns e pontuação
+    n_clean = n.replace(".", "").replace("-", " ").replace("_", " ")
+    for col_name, col_idx in consolidada_cols.items():
+        col_clean = col_name.replace(".", "").replace("-", " ").replace("_", " ")
+        if n_clean in col_clean or col_clean in n_clean:
+            return col_idx
+
+    return None
+
+
+# ── Endpoint: info ───────────────────────────────────────────────────────────
 
 IGNORED_SHEETS = {"Resumo Geral", "Contagem", "Acrescentar1"}
 
@@ -235,7 +321,6 @@ async def get_info(file: UploadFile = File(...)):
         ws = wb[name]
         unidades = set()
         row_count = 0
-        # Detect data start row (find QTD header then start after it)
         data_start = 4
         for ri, row in enumerate(ws.iter_rows(max_row=10, values_only=True), 1):
             if row and row[0] is not None and str(row[0]).strip().upper() == "QTD":
@@ -252,11 +337,10 @@ async def get_info(file: UploadFile = File(...)):
             "unidades": sorted(unidades - {""})
         })
     wb.close()
-
     return {"sheets": sheets}
 
 
-# ── Endpoint: mesclar planilha individual na consolidada ─────────────────────
+# ── Endpoint: merge ──────────────────────────────────────────────────────────
 
 @app.post("/merge")
 async def merge(
@@ -271,13 +355,21 @@ async def merge(
     wb_cons = load_workbook_safe(consolidada_bytes)
     wb_ind  = load_workbook_safe(individual_bytes)
 
+    # Lê todos os militares da planilha individual (com colunas dinâmicas)
     novos = []
+    all_material_cols = []
     for sheet_name in wb_ind.sheetnames:
         ws_ind = wb_ind[sheet_name]
-        novos.extend(read_individual_sheet(ws_ind))
+        records, mat_cols = read_individual_sheet(ws_ind)
+        novos.extend(records)
+        for mc in mat_cols:
+            if mc not in all_material_cols:
+                all_material_cols.append(mc)
 
     if not novos:
         raise HTTPException(400, "Nenhum militar encontrado na planilha individual.")
+
+    _log.info(f"[merge] {len(novos)} militares, materiais: {all_material_cols}")
 
     aba_destino = aba_destino.strip()
     inserir_antes_de = inserir_antes_de.strip()
@@ -289,33 +381,49 @@ async def merge(
 
     ws_dest = wb_cons[aba_destino]
 
-    # Coleta areas reais presentes na aba destino para normalizacao
+    # Lê o cabeçalho da consolidada para mapear colunas
+    header_row, cons_col_map, cons_name_to_col = read_consolidada_header(ws_dest)
+    data_start_row = header_row + 1
+
+    _log.info(f"[merge] Cabeçalho consolidada (linha {header_row}): {cons_col_map}")
+
+    # Mapeia as colunas fixas da consolidada
+    fixed_col_mapping = {}
+    for key in ["QTD", "AREA", "ÁREA", "UNIDADE", "UNIDADE (FINAL)", "POSTO/GRAD",
+                "QUADRO", "NOME COMPLETO", "RG"]:
+        if key in cons_name_to_col:
+            fixed_col_mapping[normalize_col_name(key)] = cons_name_to_col[key]
+
+    # Mapeia as colunas de material: individual -> consolidada col index
+    material_col_mapping = {}  # material_name -> col_index na consolidada
+    for mat_name in all_material_cols:
+        col_idx = fuzzy_match_column(mat_name, cons_name_to_col)
+        if col_idx:
+            material_col_mapping[mat_name] = col_idx
+            _log.info(f"[merge] Material '{mat_name}' -> coluna {col_idx}")
+        else:
+            _log.warning(f"[merge] Material '{mat_name}' NÃO encontrado na consolidada!")
+
+    # Coleta areas reais da aba destino
     areas_consolidada = []
-    for row in ws_dest.iter_rows(min_row=4, values_only=True):
+    for row in ws_dest.iter_rows(min_row=data_start_row, values_only=True):
         if row and row[1]:
             val = str(row[1]).strip()
             if val and val not in areas_consolidada:
                 areas_consolidada.append(val)
 
-    # Normaliza area e posto de cada militar da planilha individual
+    # Normaliza area e posto
     for mil in novos:
-        mil["AREA"]       = normalizar_area(mil["AREA"], areas_consolidada)
-        mil["UNIDADE"]    = normalizar_area(mil["UNIDADE"], areas_consolidada)
-        mil["POSTO_GRAD"] = normalizar_posto(mil["POSTO_GRAD"]) or mil["POSTO_GRAD"]
+        mil["AREA"] = normalizar_area(mil.get("AREA", ""), areas_consolidada)
+        mil["UNIDADE"] = normalizar_area(mil.get("UNIDADE", ""), areas_consolidada)
+        mil["POSTO_GRAD"] = normalizar_posto(mil.get("POSTO_GRAD", "")) or mil.get("POSTO_GRAD", "")
 
-    # Detect data start row dynamically (find QTD header)
-    data_start_row = 4
-    for ri in range(1, 10):
-        v = ws_dest.cell(row=ri, column=1).value
-        if v is not None and str(v).strip().upper() == "QTD":
-            data_start_row = ri + 1
-            break
-
-    # Encontra linha de insercao
+    # Encontra linha de inserção
     insert_row = None
     if inserir_antes_de:
+        unidade_col = cons_name_to_col.get("UNIDADE (FINAL)") or cons_name_to_col.get("UNIDADE") or 3
         for i in range(data_start_row, ws_dest.max_row + 1):
-            val = ws_dest.cell(row=i, column=3).value
+            val = ws_dest.cell(row=i, column=unidade_col).value
             if val and str(val).strip() == inserir_antes_de:
                 insert_row = i
                 break
@@ -332,35 +440,56 @@ async def merge(
 
     ws_dest.insert_rows(insert_row, amount=n)
 
-    COR_AZUL   = "DAEEF3"
+    COR_AZUL = "DAEEF3"
     COR_BRANCO = "FFFFFF"
 
     for i, mil in enumerate(novos):
         rn = insert_row + i
         cor = COR_AZUL if i % 2 == 0 else COR_BRANCO
         fill = make_fill(cor)
-        values = [
-            i + 1,
-            mil["AREA"],
-            mil["UNIDADE"],
-            mil["POSTO_GRAD"],
-            mil["QUADRO"],
-            mil["NOME_COMPLETO"],
-            mil["RG"],
-            mil["CAMISETA_GV"],
-            mil["CAMISA_UV"],
-            mil["SHORT_JOHN"],
-        ]
-        for col_idx, val in enumerate(values, start=1):
+
+        # Escreve campos fixos
+        fixed_values = {
+            "QTD": i + 1,
+            "AREA": mil.get("AREA", ""),
+            "UNIDADE": mil.get("UNIDADE", ""),
+            "POSTO_GRAD": mil.get("POSTO_GRAD", ""),
+            "QUADRO": mil.get("QUADRO", ""),
+            "NOME_COMPLETO": mil.get("NOME_COMPLETO", ""),
+            "RG": mil.get("RG", ""),
+        }
+
+        for key, val in fixed_values.items():
+            col_idx = fixed_col_mapping.get(key)
+            if col_idx:
+                cell = ws_dest.cell(row=rn, column=col_idx, value=val)
+                cell.fill = fill
+                if col_idx - 1 < len(ref) and ref[col_idx - 1].font:
+                    cell.font = copy(ref[col_idx - 1].font)
+                if col_idx - 1 < len(ref) and ref[col_idx - 1].alignment:
+                    cell.alignment = copy(ref[col_idx - 1].alignment)
+                if col_idx - 1 < len(ref) and ref[col_idx - 1].border:
+                    cell.border = copy(ref[col_idx - 1].border)
+
+        # Escreve campos de material (dinâmicos)
+        for mat_name, col_idx in material_col_mapping.items():
+            val = mil.get(mat_name, "")
             cell = ws_dest.cell(row=rn, column=col_idx, value=val)
             cell.fill = fill
-            if col_idx <= len(ref) and ref[col_idx-1].font:
-                cell.font = copy(ref[col_idx-1].font)
-            if col_idx <= len(ref) and ref[col_idx-1].alignment:
-                cell.alignment = copy(ref[col_idx-1].alignment)
-            if col_idx <= len(ref) and ref[col_idx-1].border:
-                cell.border = copy(ref[col_idx-1].border)
+            if col_idx - 1 < len(ref) and ref[col_idx - 1].font:
+                cell.font = copy(ref[col_idx - 1].font)
+            if col_idx - 1 < len(ref) and ref[col_idx - 1].alignment:
+                cell.alignment = copy(ref[col_idx - 1].alignment)
+            if col_idx - 1 < len(ref) and ref[col_idx - 1].border:
+                cell.border = copy(ref[col_idx - 1].border)
 
+        # Preenche colunas restantes com fill (para manter visual consistente)
+        for col in range(1, ws_dest.max_column + 1):
+            cell = ws_dest.cell(row=rn, column=col)
+            if cell.value is None:
+                cell.fill = fill
+
+    # Restaura cores originais das linhas deslocadas
     for old_row, cor in cores_originais.items():
         new_row = old_row + n
         if new_row <= ws_dest.max_row:
@@ -368,11 +497,10 @@ async def merge(
             for col in range(1, ws_dest.max_column + 1):
                 ws_dest.cell(row=new_row, column=col).fill = fill
 
-    # ── Atualiza aba Contagem ─────────────────────────────────────────────────
+    # ── Atualiza aba Contagem (se existir) ────────────────────────────────────
     if "Contagem" in wb_cons.sheetnames:
         ws_cont = wb_cons["Contagem"]
-
-        unidades_novas = set(m["UNIDADE"] for m in novos if m["UNIDADE"])
+        unidades_novas = set(m.get("UNIDADE", "") for m in novos if m.get("UNIDADE"))
         unidades_existentes = set()
         for i in range(1, ws_cont.max_row + 1):
             val = ws_cont.cell(row=i, column=1).value
@@ -382,7 +510,6 @@ async def merge(
         unidades_para_adicionar = sorted(unidades_novas - unidades_existentes)
 
         if unidades_para_adicionar:
-            # Copia template do primeiro bloco (linhas 2-4) e adapta
             template_unidade = str(ws_cont.cell(row=2, column=1).value or "")
             template_rows = {}
             for offset in range(3):
@@ -417,9 +544,7 @@ async def merge(
                         elif isinstance(tmpl_val, str) and tmpl_val.startswith("="):
                             new_f = tmpl_val
                             if template_unidade:
-                                new_f = new_f.replace(
-                                    f'"{template_unidade}"', f'"{unidade}"'
-                                )
+                                new_f = new_f.replace(f'"{template_unidade}"', f'"{unidade}"')
                             new_f = re.sub(r"'[^']*'!", f"'{aba_destino}'!", new_f)
                             new_f = re.sub(r"=SUM\(C\d+:I\d+\)", f"=SUM(C{rn}:I{rn})", new_f)
                             cell.value = new_f
@@ -427,9 +552,8 @@ async def merge(
                             if ref_cont[col-1].font:      cell.font      = copy(ref_cont[col-1].font)
                             if ref_cont[col-1].alignment: cell.alignment = copy(ref_cont[col-1].alignment)
                             if ref_cont[col-1].border:    cell.border    = copy(ref_cont[col-1].border)
-                current_row += 3
+                    current_row += 3
 
-            # Corrige SUM deslocados pelo insert_rows
             for r in range(1, ws_cont.max_row + 1):
                 cell_k = ws_cont.cell(row=r, column=11)
                 val = str(cell_k.value or "")
@@ -439,34 +563,41 @@ async def merge(
                 if m_sum and int(m_sum.group(1)) != r:
                     cell_k.value = f"=SUM(C{r}:I{r}){m_sum.group(3)}"
 
-    # ── Atualiza Resumo Geral ─────────────────────────────────────────────────
+    # ── Atualiza Resumo Geral (se existir) ────────────────────────────────────
     if "Resumo Geral" in wb_cons.sheetnames and "Contagem" in wb_cons.sheetnames:
         ws_cont = wb_cons["Contagem"]
         ws_res  = wb_cons["Resumo Geral"]
 
-        rows_cam, rows_uv, rows_sj = [], [], []
+        # Coleta todos os tipos de material da aba Contagem (coluna B)
+        materiais_contagem = {}  # material_name -> [row_indices]
         for i in range(1, ws_cont.max_row + 1):
             mat = ws_cont.cell(row=i, column=2).value
-            if mat == "Camiseta de GV": rows_cam.append(i)
-            elif mat == "Camisa U.V":   rows_uv.append(i)
-            elif mat == "Short John":   rows_sj.append(i)
+            if mat:
+                mat_str = str(mat).strip()
+                if mat_str:
+                    if mat_str not in materiais_contagem:
+                        materiais_contagem[mat_str] = []
+                    materiais_contagem[mat_str].append(i)
 
-        def build_sum(rows, cont_col):
-            return "=" + "+".join(f"Contagem!{cont_col}{r}" for r in rows)
-
-        cont_cols_cam = ["C","D","E","F","G","H","I","J"]
-        for idx, cont_col in enumerate(cont_cols_cam):
-            ws_res.cell(row=4, column=idx+2).value = build_sum(rows_cam, cont_col)
-        ws_res.cell(row=4, column=10).value = build_sum(rows_cam, "K")
-
-        cont_cols_uv = ["D","E","F","G","H"]
-        for idx, cont_col in enumerate(cont_cols_uv):
-            ws_res.cell(row=7, column=idx+2).value = build_sum(rows_uv, cont_col)
-        ws_res.cell(row=7, column=7).value = build_sum(rows_uv, "K")
-
-        for idx, cont_col in enumerate(cont_cols_uv):
-            ws_res.cell(row=10, column=idx+2).value = build_sum(rows_sj, cont_col)
-        ws_res.cell(row=10, column=7).value = build_sum(rows_sj, "K")
+        # Para cada material no Resumo Geral, atualiza as fórmulas SUM
+        for res_row in range(1, ws_res.max_row + 1):
+            mat_res = ws_res.cell(row=res_row, column=1).value
+            if not mat_res:
+                continue
+            mat_res_str = str(mat_res).strip()
+            if mat_res_str in materiais_contagem:
+                rows = materiais_contagem[mat_res_str]
+                # Atualiza cada coluna de tamanho
+                for col in range(2, ws_res.max_column + 1):
+                    existing = ws_res.cell(row=res_row, column=col).value
+                    if existing and str(existing).startswith("="):
+                        # Reconstrói a fórmula SUM com as linhas corretas
+                        # Detecta qual coluna da Contagem está sendo referenciada
+                        match = re.match(r"=.*Contagem!([A-Z]+)\d+", str(existing))
+                        if match:
+                            cont_col = match.group(1)
+                            formula = "=" + "+".join(f"Contagem!{cont_col}{r}" for r in rows)
+                            ws_res.cell(row=res_row, column=col).value = formula
 
     # ── Retorna arquivo ───────────────────────────────────────────────────────
     output = io.BytesIO()
