@@ -5,12 +5,9 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { useData } from "@/contexts/DataContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getAllMaterialKeys, getMaterialSizes, normalizeMaterialValue } from "@/utils/normalizer";
 
-const CAMISETA_SIZES = ["PP", "P", "M", "G", "GG", "XGG", "EXG", "--"];
-const CAMISA_SIZES = ["P", "M", "G", "GG", "XGG", "--"];
-const SHORT_SIZES = ["P", "M", "G", "GG", "XGG", "--"];
-
-function countByGroup(records: ReturnType<typeof useData>["records"], groupField: "AREA", itemField: "CAMISETA_GV" | "CAMISA_UV" | "SHORT_JOHN", sizes: string[]) {
+function countByGroup(records: ReturnType<typeof useData>["records"], groupField: "AREA", material: string, sizes: string[]) {
   const grouped: Record<string, Record<string, number>> = {};
   for (const r of records) {
     const group = r[groupField] || "Sem Área";
@@ -18,7 +15,7 @@ function countByGroup(records: ReturnType<typeof useData>["records"], groupField
       grouped[group] = {};
       for (const s of sizes) grouped[group][s] = 0;
     }
-    const v = r[itemField].trim().toUpperCase() || "--";
+    const v = normalizeMaterialValue(r.materiais[material]) || "--";
     if (v in grouped[group]) grouped[group][v]++;
     else grouped[group]["--"]++;
   }
@@ -35,10 +32,19 @@ function countByGroup(records: ReturnType<typeof useData>["records"], groupField
   return { rows, totals, grandTotal };
 }
 
-const CHART_COLORS = ["#1e3a5f", "#c62828", "#2e7d32", "#e65100", "#1565c0", "#6a1b9a", "#00838f"];
+const CHART_COLORS = [
+  "hsl(var(--primary))",
+  "hsl(var(--accent))",
+  "hsl(var(--success))",
+  "hsl(var(--warning))",
+  "hsl(var(--info))",
+  "hsl(var(--row-blue))",
+  "hsl(var(--row-orange))",
+];
 
 export default function SummaryByAreaTab() {
   const { records } = useData();
+  const materials = useMemo(() => getAllMaterialKeys(records), [records]);
 
   const areaCount = useMemo(() => {
     const map: Record<string, number> = {};
@@ -49,28 +55,31 @@ export default function SummaryByAreaTab() {
     return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0])).map(([area, count]) => ({ area, count }));
   }, [records]);
 
-  const camiseta = useMemo(() => countByGroup(records, "AREA", "CAMISETA_GV", CAMISETA_SIZES), [records]);
-  const camisa = useMemo(() => countByGroup(records, "AREA", "CAMISA_UV", CAMISA_SIZES), [records]);
-  const shortJohn = useMemo(() => countByGroup(records, "AREA", "SHORT_JOHN", SHORT_SIZES), [records]);
+  const tables = useMemo(
+    () => materials.map((material) => {
+      const sizes = getMaterialSizes(records, material);
+      return { material, sizes: sizes.length ? sizes : ["--"], data: countByGroup(records, "AREA", material, sizes.length ? sizes : ["--"]) };
+    }),
+    [materials, records],
+  );
 
   const chartData = useMemo(() => {
-    return camiseta.rows.map((r) => ({ name: r.group.substring(0, 15), ...r.counts }));
-  }, [camiseta]);
+    if (!tables[0]) return [];
+    return tables[0].data.rows.map((row) => ({ name: row.group.substring(0, 15), ...row.counts }));
+  }, [tables]);
 
   const exportXlsx = () => {
     const wb = XLSX.utils.book_new();
-    const addSheet = (name: string, data: typeof camiseta, sizes: string[]) => {
+    const addSheet = (name: string, data: ReturnType<typeof countByGroup>, sizes: string[]) => {
       const rows = data.rows.map((r) => ({ ÁREA: r.group, ...r.counts, TOTAL: r.total }));
       rows.push({ ÁREA: "TOTAL GERAL", ...data.totals, TOTAL: data.grandTotal });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), name);
     };
-    addSheet("Camiseta GV por Área", camiseta, CAMISETA_SIZES);
-    addSheet("Camisa UV por Área", camisa, CAMISA_SIZES);
-    addSheet("Short John por Área", shortJohn, SHORT_SIZES);
+    tables.forEach(({ material, data, sizes }) => addSheet(material.substring(0, 31), data, sizes));
     XLSX.writeFile(wb, "resumo_por_area.xlsx");
   };
 
-  if (records.length === 0) {
+  if (records.length === 0 || materials.length === 0) {
     return <div className="text-center py-12 text-muted-foreground">Importe dados para ver o resumo por área.</div>;
   }
 
@@ -99,7 +108,7 @@ export default function SummaryByAreaTab() {
 
       {chartData.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Distribuição de Camiseta GV por Área</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Distribuição de {tables[0]?.material} por Área</CardTitle></CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData}>
@@ -108,7 +117,7 @@ export default function SummaryByAreaTab() {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                {CAMISETA_SIZES.filter((s) => s !== "--").map((s, i) => (
+                {tables[0]?.sizes.filter((s) => s !== "--").map((s, i) => (
                   <Bar key={s} dataKey={s} fill={CHART_COLORS[i % CHART_COLORS.length]} stackId="a" />
                 ))}
               </BarChart>
@@ -117,9 +126,9 @@ export default function SummaryByAreaTab() {
         </Card>
       )}
 
-      <GroupTable title="Camiseta de GV por Área" data={camiseta} sizes={CAMISETA_SIZES} />
-      <GroupTable title="Camisa U.V por Área" data={camisa} sizes={CAMISA_SIZES} />
-      <GroupTable title="Short John por Área" data={shortJohn} sizes={SHORT_SIZES} />
+      {tables.map(({ material, data, sizes }) => (
+        <GroupTable key={material} title={`${material} por Área`} data={data} sizes={sizes} />
+      ))}
     </div>
   );
 }

@@ -4,25 +4,14 @@ import { Download } from "lucide-react";
 import { useData } from "@/contexts/DataContext";
 import { Button } from "@/components/ui/button";
 import type { MilitarRecord } from "@/contexts/DataContext";
-
-const CAMISETA_SIZES = ["PP", "P", "M", "G", "GG", "XGG", "EXG", "--"];
-const CAMISA_SIZES = ["P", "M", "G", "GG", "XGG", "--"];
-const SHORT_SIZES = ["P", "M", "G", "GG", "XGG", "--"];
-
-/** Normaliza tamanho: uppercase, sem espaços, vazio vira "--" */
-function normalizeSize(raw: string | undefined | null): string {
-  if (!raw) return "--";
-  const v = String(raw).trim().toUpperCase();
-  if (v === "" || v === "-" || v === "N/A") return "--";
-  return v;
-}
+import { getAllMaterialKeys, getMaterialSizes, normalizeMaterialValue } from "@/utils/normalizer";
 
 function countSizes(values: string[], sizes: string[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const s of sizes) counts[s] = 0;
 
   for (const raw of values) {
-    const v = normalizeSize(raw);
+    const v = normalizeMaterialValue(raw) || "--";
     if (v in counts) {
       counts[v]++;
     } else {
@@ -47,13 +36,13 @@ interface TableData {
 
 function buildTable(
   records: MilitarRecord[],
-  field: "CAMISETA_GV" | "CAMISA_UV" | "SHORT_JOHN",
+  material: string,
   sizes: string[]
 ): TableData {
   // Agrupa por unidade
   const grouped: Record<string, MilitarRecord[]> = {};
   for (const r of records) {
-    const key = r.UNIDADE || "(Sem Unidade)";
+    const key = r.UNIDADE || r.AREA || "(Sem Unidade)";
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(r);
   }
@@ -61,7 +50,7 @@ function buildTable(
   const rows: TableRow[] = Object.keys(grouped)
     .sort()
     .map((unit) => {
-      const values = grouped[unit].map((r) => r[field] ?? "");
+      const values = grouped[unit].map((r) => r.materiais[material] ?? "");
       const counts = countSizes(values, sizes);
       const total = Object.values(counts).reduce((a, b) => a + b, 0);
       return { unit, counts, total };
@@ -78,10 +67,14 @@ function buildTable(
 
 export default function CountByUnitTab() {
   const { records } = useData();
-
-  const camiseta = useMemo(() => buildTable(records, "CAMISETA_GV", CAMISETA_SIZES), [records]);
-  const camisa = useMemo(() => buildTable(records, "CAMISA_UV", CAMISA_SIZES), [records]);
-  const shortJohn = useMemo(() => buildTable(records, "SHORT_JOHN", SHORT_SIZES), [records]);
+  const materials = useMemo(() => getAllMaterialKeys(records), [records]);
+  const tables = useMemo(
+    () => materials.map((material) => {
+      const sizes = getMaterialSizes(records, material);
+      return { material, sizes: sizes.length ? sizes : ["--"], data: buildTable(records, material, sizes.length ? sizes : ["--"]) };
+    }),
+    [materials, records],
+  );
 
   const exportXlsx = () => {
     const wb = XLSX.utils.book_new();
@@ -102,13 +95,11 @@ export default function CountByUnitTab() {
       XLSX.utils.book_append_sheet(wb, ws, name);
     };
 
-    addSheet("Camiseta GV", camiseta, CAMISETA_SIZES);
-    addSheet("Camisa UV", camisa, CAMISA_SIZES);
-    addSheet("Short John", shortJohn, SHORT_SIZES);
+    tables.forEach(({ material, data, sizes }) => addSheet(material.substring(0, 31), data, sizes));
     XLSX.writeFile(wb, "contagem_por_unidade.xlsx");
   };
 
-  if (records.length === 0) {
+  if (records.length === 0 || materials.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
         Importe dados para ver a contagem por unidade.
@@ -125,9 +116,9 @@ export default function CountByUnitTab() {
         </Button>
       </div>
 
-      <SummaryTable title="Camiseta de GV" data={camiseta} sizes={CAMISETA_SIZES} />
-      <SummaryTable title="Camisa U.V para GV" data={camisa} sizes={CAMISA_SIZES} />
-      <SummaryTable title="Short John" data={shortJohn} sizes={SHORT_SIZES} />
+      {tables.map(({ material, data, sizes }) => (
+        <SummaryTable key={material} title={material} data={data} sizes={sizes} />
+      ))}
     </div>
   );
 }
