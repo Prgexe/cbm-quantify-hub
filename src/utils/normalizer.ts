@@ -215,7 +215,7 @@ function similarityScore(input: string, alias: string) {
   return Math.max(tokenScore, editScore * 0.9);
 }
 
-function matchBaseField(header: string) {
+function matchBaseField(header: string): { field: CanonicalBaseField; score: number } | null {
   const lookup = normalizeLookup(header);
   let best: { field: CanonicalBaseField; score: number } | null = null;
 
@@ -234,7 +234,7 @@ function matchBaseField(header: string) {
   return null;
 }
 
-function canonicalizeMaterialHeader(header: string) {
+function canonicalizeMaterialHeader(header: string): string | null {
   const display = normalizeDisplayText(header);
   const lookup = normalizeLookup(header);
   if (!lookup || IGNORED_HEADER_LABELS.has(lookup)) return null;
