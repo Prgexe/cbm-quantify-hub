@@ -63,28 +63,82 @@ export default function UploadTab() {
           <CardHeader>
             <CardTitle className="text-base">Arquivos Importados ({files.length})</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-4">
             {files.map((f) => (
-              <div key={f.name} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
-                <div className="flex items-center gap-3">
-                  <FileSpreadsheet className="w-5 h-5 text-success" />
-                  <div>
-                    <p className="font-medium text-sm">{f.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {f.status === "success" ? `${f.recordCount} registros` : f.error}
-                    </p>
+              <div key={f.name} className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <FileSpreadsheet className="w-5 h-5 mt-0.5 text-success" />
+                    <div className="space-y-1">
+                      <p className="font-medium text-sm break-all">{f.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {f.status === "success"
+                          ? `${f.recordCount} registros válidos${f.duplicateCount ? ` · ${f.duplicateCount} duplicatas removidas` : ""}`
+                          : f.error}
+                      </p>
+                      {f.status === "success" && f.materials.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {f.materials.map((material) => (
+                            <span key={material} className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">
+                              {material}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {f.status === "success" ? (
+                      <CheckCircle2 className="w-4 h-4 text-success" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-warning" />
+                    )}
+                    <Button variant="ghost" size="icon" onClick={() => removeFile(f.name)}>
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {f.status === "success" ? (
-                    <CheckCircle2 className="w-4 h-4 text-success" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-warning" />
-                  )}
-                  <Button variant="ghost" size="icon" onClick={() => removeFile(f.name)}>
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </Button>
-                </div>
+
+                {f.status === "success" && f.warnings.length > 0 && (
+                  <div className="rounded-md border bg-background p-3">
+                    <p className="text-xs font-semibold mb-2">Avisos de normalização</p>
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      {f.warnings.map((warning, index) => (
+                        <li key={`${f.name}-warning-${index}`}>• {warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {f.status === "success" && f.previewRows.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold">Preview da consolidação</p>
+                    <div className="overflow-x-auto rounded-md border bg-background">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-primary text-primary-foreground">
+                            {f.previewColumns.map((column) => (
+                              <th key={`${f.name}-${column}`} className="p-2 text-left whitespace-nowrap">
+                                {column}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {f.previewRows.map((row, rowIndex) => (
+                            <tr key={`${f.name}-row-${rowIndex}`} className="border-t">
+                              {f.previewColumns.map((column) => (
+                                <td key={`${f.name}-${rowIndex}-${column}`} className="p-2 whitespace-nowrap">
+                                  {row[column] || "—"}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </CardContent>

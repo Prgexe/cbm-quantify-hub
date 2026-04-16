@@ -5,15 +5,16 @@ import { useData, MilitarRecord } from "@/contexts/DataContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BASE_FIELDS, BASE_FIELD_LABELS, getAllMaterialKeys, isBaseField, sortRecords } from "@/utils/normalizer";
 
 const HIGHLIGHT_COLORS = [
   { value: "",       label: "— Sem cor",     bg: "" },
-  { value: "yellow", label: "🟡 Amarelo",    bg: "#FEF08A" },
-  { value: "green",  label: "🟢 Verde",      bg: "#BBF7D0" },
-  { value: "red",    label: "🔴 Vermelho",   bg: "#FECACA" },
-  { value: "blue",   label: "🔵 Azul",       bg: "#BFDBFE" },
-  { value: "orange", label: "🟠 Laranja",    bg: "#FED7AA" },
-  { value: "purple", label: "🟣 Roxo",       bg: "#E9D5FF" },
+  { value: "yellow", label: "🟡 Amarelo",    bg: "hsl(var(--row-yellow))" },
+  { value: "green",  label: "🟢 Verde",      bg: "hsl(var(--row-green))" },
+  { value: "red",    label: "🔴 Vermelho",   bg: "hsl(var(--row-red))" },
+  { value: "blue",   label: "🔵 Azul",       bg: "hsl(var(--row-blue))" },
+  { value: "orange", label: "🟠 Laranja",    bg: "hsl(var(--row-orange))" },
+  { value: "purple", label: "🟣 Roxo",       bg: "hsl(var(--secondary))" },
 ];
 
 const COLOR_BG: Record<string, string> = Object.fromEntries(
@@ -22,22 +23,18 @@ const COLOR_BG: Record<string, string> = Object.fromEntries(
 
 const PAGE_SIZE = 100;
 
-const FIELDS: (keyof MilitarRecord)[] = [
-  "QTD", "AREA", "UNIDADE", "POSTO_GRAD", "QUADRO",
-  "NOME_COMPLETO", "RG", "CAMISETA_GV", "CAMISA_UV", "SHORT_JOHN",
-];
-
-const LABELS: Record<string, string> = {
-  QTD: "QTD", AREA: "ÁREA", UNIDADE: "UNIDADE", POSTO_GRAD: "POSTO/GRAD",
-  QUADRO: "QUADRO", NOME_COMPLETO: "NOME COMPLETO", RG: "RG",
-  CAMISETA_GV: "Camiseta GV", CAMISA_UV: "Camisa U.V", SHORT_JOHN: "Short John",
-};
-
 const WIDTHS: Record<string, string> = {
   QTD: "50px", AREA: "200px", UNIDADE: "300px", POSTO_GRAD: "130px",
   QUADRO: "90px", NOME_COMPLETO: "280px", RG: "70px",
-  CAMISETA_GV: "90px", CAMISA_UV: "90px", SHORT_JOHN: "90px",
+  ORIGEM: "220px",
 };
+
+interface ColumnDef {
+  id: string;
+  label: string;
+  width: string;
+  editable: boolean;
+}
 
 export default function ConsolidatedTab() {
   const { records, updateRecord, setRecordColor } = useData();
@@ -47,8 +44,14 @@ export default function ConsolidatedTab() {
   const [filterPosto, setFilterPosto]   = useState("__all__");
   const [filterQuadro, setFilterQuadro] = useState("__all__");
   const [page, setPage]                 = useState(0);
-  const [editingCell, setEditingCell]   = useState<{ id: string; field: keyof MilitarRecord } | null>(null);
+  const [editingCell, setEditingCell]   = useState<{ id: string; field: string } | null>(null);
   const [fullscreen, setFullscreen]     = useState(false);
+  const materials = useMemo(() => getAllMaterialKeys(records), [records]);
+  const columns = useMemo<ColumnDef[]>(() => [
+    ...BASE_FIELDS.map((field) => ({ id: field, label: BASE_FIELD_LABELS[field], width: WIDTHS[field] || "140px", editable: true })),
+    ...materials.map((material) => ({ id: material, label: material, width: WIDTHS[material] || "110px", editable: true })),
+    { id: "ORIGEM", label: "ORIGEM", width: WIDTHS.ORIGEM, editable: false },
+  ], [materials]);
 
   const areas    = useMemo(() => [...new Set(records.map((r) => r.AREA))].filter(Boolean).sort(), [records]);
   const unidades = useMemo(() => [...new Set(records.map((r) => r.UNIDADE))].filter(Boolean).sort(), [records]);
@@ -67,33 +70,30 @@ export default function ConsolidatedTab() {
     if (filterUnidade !== "__all__") data = data.filter((r) => r.UNIDADE   === filterUnidade);
     if (filterPosto   !== "__all__") data = data.filter((r) => r.POSTO_GRAD === filterPosto);
     if (filterQuadro  !== "__all__") data = data.filter((r) => r.QUADRO    === filterQuadro);
-    return data;
+    return sortRecords(data);
   }, [records, search, filterArea, filterUnidade, filterPosto, filterQuadro]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const currentPage = Math.min(page, totalPages - 1);
+  const paged = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
   // ── Exportação: uma aba por CBA + aba geral ──────────────────────────────────
   const exportXlsx = () => {
     const wb = XLSX.utils.book_new();
 
-    const toRow = (r: MilitarRecord) => ({
-      "QTD": r.QTD,
-      "ÁREA": r.AREA,
-      "UNIDADE (FINAL)": r.UNIDADE,
-      "POSTO/GRAD": r.POSTO_GRAD,
-      "QUADRO": r.QUADRO,
-      "NOME COMPLETO": r.NOME_COMPLETO,
-      "RG": r.RG,
-      "Camiseta de GV": r.CAMISETA_GV,
-      "Camisa U.V para GV": r.CAMISA_UV,
-      '"Short John"': r.SHORT_JOHN,
+    const toRow = (record: MilitarRecord) => ({
+      QTD: record.QTD,
+      "ÁREA": record.AREA,
+      UNIDADE: record.UNIDADE,
+      "POSTO/GRAD": record.POSTO_GRAD,
+      QUADRO: record.QUADRO,
+      "NOME COMPLETO": record.NOME_COMPLETO,
+      RG: record.RG,
+      ...Object.fromEntries(materials.map((material) => [material, record.materiais[material] ?? ""])),
+      ORIGEM: record._source,
     });
 
-    const colWidths = [
-      { wch: 5 }, { wch: 25 }, { wch: 35 }, { wch: 15 }, { wch: 10 },
-      { wch: 35 }, { wch: 8 }, { wch: 14 }, { wch: 18 }, { wch: 12 },
-    ];
+    const colWidths = columns.map((column) => ({ wch: Math.max(10, Math.round(parseInt(column.width, 10) / 8) || 14) }));
 
     // Normaliza área: travessão → hífen para evitar abas duplicadas
     const normalizeArea = (a: string) =>
@@ -169,9 +169,9 @@ export default function ConsolidatedTab() {
               <th className="p-2 text-left text-xs whitespace-nowrap sticky left-0 bg-primary z-20" style={{ minWidth: "130px" }}>
                 Marcação
               </th>
-              {FIELDS.map((f) => (
-                <th key={f} className="p-2 text-left text-xs whitespace-nowrap" style={{ minWidth: WIDTHS[f] }}>
-                  {LABELS[f]}
+              {columns.map((column) => (
+                <th key={column.id} className="p-2 text-left text-xs whitespace-nowrap" style={{ minWidth: column.width }}>
+                  {column.label}
                 </th>
               ))}
             </tr>
@@ -186,7 +186,7 @@ export default function ConsolidatedTab() {
                     <select
                       value={r._color}
                       onChange={(e) => setRecordColor(r.id, e.target.value)}
-                      className="w-full text-xs rounded border px-1 py-0.5 bg-white"
+                      className="w-full rounded border border-input bg-card px-1 py-0.5 text-xs"
                     >
                       {HIGHLIGHT_COLORS.map((c) => (
                         <option key={c.value} value={c.value}>{c.label}</option>
@@ -194,13 +194,13 @@ export default function ConsolidatedTab() {
                     </select>
                   </td>
                   {/* Campos */}
-                  {FIELDS.map((field) => (
+                  {columns.map((column) => (
                     <ECell
-                      key={field}
-                      r={r} field={field} bg={bg}
-                      editing={editingCell?.id === r.id && editingCell?.field === field}
-                      onStartEdit={() => setEditingCell({ id: r.id, field })}
-                      onEndEdit={(v) => { updateRecord(r.id, field, v); setEditingCell(null); }}
+                      key={column.id}
+                      r={r} field={column.id} editable={column.editable} bg={bg}
+                      editing={editingCell?.id === r.id && editingCell?.field === column.id}
+                      onStartEdit={() => column.editable && setEditingCell({ id: r.id, field: column.id })}
+                      onEndEdit={(v) => { updateRecord(r.id, column.id, v); setEditingCell(null); }}
                       onCancel={() => setEditingCell(null)}
                     />
                   ))}
@@ -209,7 +209,7 @@ export default function ConsolidatedTab() {
             })}
             {paged.length === 0 && (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-muted-foreground">
+                <td colSpan={columns.length + 1} className="p-8 text-center text-muted-foreground">
                   Nenhum registro encontrado.
                 </td>
               </tr>
@@ -224,9 +224,9 @@ export default function ConsolidatedTab() {
           Anterior
         </Button>
         <span className="text-sm text-muted-foreground">
-          Página {page + 1} de {totalPages} · {filtered.length} registros
+          Página {currentPage + 1} de {totalPages} · {filtered.length} registros
         </span>
-        <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}>
+        <Button variant="outline" size="sm" disabled={currentPage >= totalPages - 1} onClick={() => setPage(currentPage + 1)}>
           Próxima
         </Button>
       </div>
@@ -234,34 +234,42 @@ export default function ConsolidatedTab() {
   );
 }
 
-function ECell({ r, field, bg, editing, onStartEdit, onEndEdit, onCancel }: {
-  r: MilitarRecord; field: keyof MilitarRecord; bg: string;
+function getCellValue(record: MilitarRecord, field: string) {
+  if (field === "ORIGEM") return record._source;
+  if (isBaseField(field)) return record[field];
+  return record.materiais[field] ?? "";
+}
+
+function ECell({ r, field, editable, bg, editing, onStartEdit, onEndEdit, onCancel }: {
+  r: MilitarRecord; field: string; editable: boolean; bg: string;
   editing: boolean;
   onStartEdit: () => void;
   onEndEdit: (v: string) => void;
   onCancel: () => void;
 }) {
+  const value = getCellValue(r, field);
+
   return (
     <td
-      className="p-2 cursor-pointer whitespace-nowrap"
+      className={`p-2 whitespace-nowrap ${editable ? "cursor-pointer" : "cursor-default"}`}
       style={{ backgroundColor: bg || undefined }}
       onClick={onStartEdit}
     >
       {editing ? (
         <input
           autoFocus
-          defaultValue={String(r[field] ?? "")}
+          defaultValue={String(value ?? "")}
           onBlur={(e) => onEndEdit(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             if (e.key === "Escape") onCancel();
           }}
-          className="w-full px-1 py-0.5 border rounded text-sm bg-white"
+          className="w-full rounded border border-input bg-card px-1 py-0.5 text-sm"
           style={{ minWidth: "60px" }}
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span>{String(r[field] ?? "")}</span>
+        <span>{String(value ?? "")}</span>
       )}
     </td>
   );
