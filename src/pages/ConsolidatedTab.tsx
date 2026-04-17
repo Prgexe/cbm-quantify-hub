@@ -50,7 +50,6 @@ export default function ConsolidatedTab() {
   const columns = useMemo<ColumnDef[]>(() => [
     ...BASE_FIELDS.map((field) => ({ id: field, label: BASE_FIELD_LABELS[field], width: WIDTHS[field] || "140px", editable: true })),
     ...materials.map((material) => ({ id: material, label: material, width: WIDTHS[material] || "110px", editable: true })),
-    { id: "ORIGEM", label: "ORIGEM", width: WIDTHS.ORIGEM, editable: false },
   ], [materials]);
 
   const areas    = useMemo(() => [...new Set(records.map((r) => r.AREA))].filter(Boolean).sort(), [records]);
