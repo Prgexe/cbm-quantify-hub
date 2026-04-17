@@ -1,7 +1,6 @@
 import * as XLSX from "xlsx";
 
 export const BASE_FIELDS = [
-  "QTD",
   "AREA",
   "UNIDADE",
   "POSTO_GRAD",
@@ -13,7 +12,6 @@ export const BASE_FIELDS = [
 export type CanonicalBaseField = (typeof BASE_FIELDS)[number];
 
 export const BASE_FIELD_LABELS: Record<CanonicalBaseField, string> = {
-  QTD: "QTD",
   AREA: "ÁREA",
   UNIDADE: "UNIDADE",
   POSTO_GRAD: "POSTO/GRAD",
@@ -23,7 +21,6 @@ export const BASE_FIELD_LABELS: Record<CanonicalBaseField, string> = {
 };
 
 export interface ParsedImportRecord {
-  QTD: string;
   AREA: string;
   UNIDADE: string;
   POSTO_GRAD: string;
@@ -77,7 +74,6 @@ const IGNORED_HEADER_LABELS = new Set([
 ]);
 
 const HEADER_ALIASES: Record<CanonicalBaseField, string[]> = {
-  QTD: ["QTD", "QTD.", "QUANTIDADE"],
   AREA: ["AREA", "ÁREA", "AREA FINAL", "ÁREA FINAL"],
   UNIDADE: ["UNIDADE", "UNIDADE FINAL", "ADE", "ADE FINAL", "ADE (FINAL)", "UNIDADE / ADE (FINAL)"],
   POSTO_GRAD: ["POSTO/GRAD", "POSTO / GRAD", "POSTO", "POSTO/GRADUAÇÃO", "POSTO/GRADUACAO", "GRADUAÇÃO", "GRADUACAO", "GRAD"],
