@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BASE_FIELDS, BASE_FIELD_LABELS, getAllMaterialKeys, isBaseField, sortRecords } from "@/utils/normalizer";
+import { generateContagemSheet } from "@/utils/generateContagem";
 
 const HIGHLIGHT_COLORS = [
   { value: "",       label: "— Sem cor",     bg: "" },
