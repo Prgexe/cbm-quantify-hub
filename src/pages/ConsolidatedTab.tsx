@@ -24,7 +24,7 @@ const COLOR_BG: Record<string, string> = Object.fromEntries(
 const PAGE_SIZE = 100;
 
 const WIDTHS: Record<string, string> = {
-  QTD: "50px", AREA: "200px", UNIDADE: "300px", POSTO_GRAD: "130px",
+  AREA: "200px", UNIDADE: "300px", POSTO_GRAD: "160px",
   QUADRO: "90px", NOME_COMPLETO: "280px", RG: "70px",
   ORIGEM: "220px",
 };
@@ -77,12 +77,11 @@ export default function ConsolidatedTab() {
   const currentPage = Math.min(page, totalPages - 1);
   const paged = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
-  // ── Exportação: uma aba por CBA + aba geral ──────────────────────────────────
+  // ── Exportação: aba por CBA + aba geral + aba Contagem ──────────────────────
   const exportXlsx = () => {
     const wb = XLSX.utils.book_new();
 
     const toRow = (record: MilitarRecord) => ({
-      QTD: record.QTD,
       "ÁREA": record.AREA,
       UNIDADE: record.UNIDADE,
       "POSTO/GRAD": record.POSTO_GRAD,
@@ -95,14 +94,10 @@ export default function ConsolidatedTab() {
 
     const colWidths = columns.map((column) => ({ wch: Math.max(10, Math.round(parseInt(column.width, 10) / 8) || 14) }));
 
-    // Normaliza área: travessão → hífen para evitar abas duplicadas
-    const normalizeArea = (a: string) =>
-      (a || "Sem Área").replace(/[–—]/g, "-").replace(/\s+/g, " ").trim();
-
-    // Agrupa por CBA/AREA normalizado
+    // Agrupa por CBA/AREA já normalizado pelo importador
     const grouped: Record<string, MilitarRecord[]> = {};
     for (const r of filtered) {
-      const key = normalizeArea(r.AREA);
+      const key = r.AREA || "Sem Área";
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(r);
     }
@@ -118,6 +113,74 @@ export default function ConsolidatedTab() {
     const wsAll = XLSX.utils.json_to_sheet(filtered.map(toRow));
     wsAll["!cols"] = colWidths;
     XLSX.utils.book_append_sheet(wb, wsAll, "Consolidado Geral");
+
+    // ── Aba CONTAGEM: por Área × Unidade × Material × Tamanho com fórmulas ──
+    const sheetName = "Consolidado Geral";
+    // Localiza colunas no "Consolidado Geral"
+    const headerOrder = ["ÁREA", "UNIDADE", "POSTO/GRAD", "QUADRO", "NOME COMPLETO", "RG", ...materials, "ORIGEM"];
+    const colLetter = (idx: number) => {
+      let s = "", n = idx;
+      while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
+      return s;
+    };
+    const areaCol = colLetter(headerOrder.indexOf("ÁREA"));
+    const unidCol = colLetter(headerOrder.indexOf("UNIDADE"));
+    const lastDataRow = filtered.length + 1; // +1 (header)
+
+    // Coleta combinações únicas Área / Unidade
+    const areas = [...new Set(filtered.map((r) => r.AREA || "Sem Área"))].sort();
+    const unidades = [...new Set(filtered.map((r) => r.UNIDADE || ""))].filter(Boolean).sort();
+
+    // Coleta tamanhos únicos por material
+    const sizesByMaterial: Record<string, string[]> = {};
+    materials.forEach((m) => {
+      const s = new Set<string>();
+      filtered.forEach((r) => { const v = r.materiais[m]; if (v) s.add(v); });
+      sizesByMaterial[m] = [...s].sort();
+    });
+
+    const contagem: any[][] = [];
+    contagem.push(["FILTROS"]);
+    contagem.push(["Área (deixe vazio = Todas):", ""]);
+    contagem.push(["Unidade (deixe vazio = Todas):", ""]);
+    contagem.push([]);
+    contagem.push(["MATERIAL", "TAMANHO", "QUANTIDADE"]);
+
+    const startRow = contagem.length + 1; // próxima linha (1-indexed)
+
+    materials.forEach((material) => {
+      const matIdx = headerOrder.indexOf(material);
+      const matCol = colLetter(matIdx);
+      const sizes = sizesByMaterial[material];
+      sizes.forEach((size) => {
+        // Fórmula: COUNTIFS no range, opcionalmente filtrando por área/unidade (B2/B3 da própria aba)
+        const range = `'${sheetName}'!${matCol}$2:${matCol}$${lastDataRow}`;
+        const areaRange = `'${sheetName}'!${areaCol}$2:${areaCol}$${lastDataRow}`;
+        const unidRange = `'${sheetName}'!${unidCol}$2:${unidCol}$${lastDataRow}`;
+        const formula =
+          `=COUNTIFS(${range},"${size}",${areaRange},IF($B$2="","*",$B$2),${unidRange},IF($B$3="","*",$B$3))`;
+        contagem.push([material, size, { f: formula }]);
+      });
+      // Total do material
+      const range = `'${sheetName}'!${matCol}$2:${matCol}$${lastDataRow}`;
+      const areaRange = `'${sheetName}'!${areaCol}$2:${areaCol}$${lastDataRow}`;
+      const unidRange = `'${sheetName}'!${unidCol}$2:${unidCol}$${lastDataRow}`;
+      const totalFormula =
+        `=COUNTIFS(${range},"<>",${areaRange},IF($B$2="","*",$B$2),${unidRange},IF($B$3="","*",$B$3))`;
+      contagem.push([material, "TOTAL", { f: totalFormula }]);
+      contagem.push([]);
+    });
+
+    const wsContagem = XLSX.utils.aoa_to_sheet(contagem);
+    wsContagem["!cols"] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }];
+
+    // Validação: lista suspensa para Área (B2) e Unidade (B3)
+    (wsContagem as any)["!dataValidation"] = [
+      { sqref: "B2", type: "list", formula1: `"${["", ...areas].join(",")}"` },
+      { sqref: "B3", type: "list", formula1: `"${["", ...unidades].join(",")}"` },
+    ];
+
+    XLSX.utils.book_append_sheet(wb, wsContagem, "Contagem");
 
     XLSX.writeFile(wb, "consolidado_cbmerj.xlsx");
   };

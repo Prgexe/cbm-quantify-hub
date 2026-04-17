@@ -11,7 +11,6 @@ import {
 
 export interface MilitarRecord {
   id: string;
-  QTD: string;
   AREA: string;
   UNIDADE: string;
   POSTO_GRAD: string;
