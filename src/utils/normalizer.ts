@@ -455,7 +455,6 @@ export function getMaterialSizes<T extends RowRecord>(records: T[], material: st
 function buildPreview(records: ParsedImportRecord[], materials: string[]) {
   const previewColumns = [...BASE_FIELDS.map((field) => BASE_FIELD_LABELS[field]), ...materials, "ORIGEM"];
   const previewRows = records.slice(0, 5).map((record) => ({
-    QTD: record.QTD,
     "ÁREA": record.AREA,
     UNIDADE: record.UNIDADE,
     "POSTO/GRAD": record.POSTO_GRAD,
