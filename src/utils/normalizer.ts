@@ -71,6 +71,14 @@ const IGNORED_HEADER_LABELS = new Set([
   "OBSERVACAO",
   "OBSERVACOES",
   "ASSINATURA",
+  "QTD",
+  "QTDE",
+  "QUANTIDADE",
+  "QUANT",
+  "RELACAO NOMINAL",
+  "RELACAO",
+  "NOMINAL",
+  "RELACAO NOMINAL DOS MILITARES",
 ]);
 
 const HEADER_ALIASES: Record<CanonicalBaseField, string[]> = {
