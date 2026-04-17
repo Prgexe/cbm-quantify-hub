@@ -115,68 +115,8 @@ export default function ConsolidatedTab() {
     wsAll["!cols"] = colWidths;
     XLSX.utils.book_append_sheet(wb, wsAll, "Consolidado Geral");
 
-    // ── Aba CONTAGEM (formato pivot: Unidade × Material × Tamanhos) ──
-    const SIZE_COLS = ["PP", "P", "M", "G", "GG", "XG", "X"];
-    const headerSizes = SIZE_COLS.filter((sz) =>
-      filtered.some((r) => materials.some((m) => (r.materiais[m] || "").toUpperCase() === sz))
-    );
-
-    // Unidades únicas, ordenadas
-    const unidadesUnicas = [...new Set(filtered.map((r) => r.UNIDADE || r.AREA || "Sem Unidade"))].sort();
-
-    const contagem: any[][] = [];
-    contagem.push(["Unidade", "Material", ...headerSizes, "TOTAL"]);
-
-    const totalGeral: Record<string, Record<string, number>> = {};
-    materials.forEach((m) => {
-      totalGeral[m] = {};
-      headerSizes.forEach((s) => (totalGeral[m][s] = 0));
-      totalGeral[m].TOTAL = 0;
-    });
-
-    unidadesUnicas.forEach((unidade) => {
-      const recsUnidade = filtered.filter((r) => (r.UNIDADE || r.AREA) === unidade);
-      materials.forEach((material) => {
-        const row: any[] = [unidade, material];
-        let totalLinha = 0;
-        headerSizes.forEach((size) => {
-          const count = recsUnidade.reduce(
-            (acc, r) => acc + (((r.materiais[material] || "").toUpperCase() === size) ? 1 : 0),
-            0
-          );
-          row.push(count || (size === "PP" || size === "X" ? "-" : 0));
-          if (typeof count === "number") {
-            totalLinha += count;
-            totalGeral[material][size] += count;
-          }
-        });
-        row.push(totalLinha);
-        totalGeral[material].TOTAL += totalLinha;
-        contagem.push(row);
-      });
-    });
-
-    // Linha em branco + Total Geral
-    contagem.push([]);
-    contagem.push(["TOTAL GERAL", "Material", ...headerSizes, "TOTAL"]);
-    materials.forEach((material) => {
-      const row: any[] = ["", material];
-      headerSizes.forEach((size) => {
-        const v = totalGeral[material][size];
-        row.push(v || (size === "PP" || size === "X" ? "-" : 0));
-      });
-      row.push(totalGeral[material].TOTAL);
-      contagem.push(row);
-    });
-
-    const wsContagem = XLSX.utils.aoa_to_sheet(contagem);
-    wsContagem["!cols"] = [
-      { wch: 32 },
-      { wch: 22 },
-      ...headerSizes.map(() => ({ wch: 8 })),
-      { wch: 10 },
-    ];
-
+    // ── Aba CONTAGEM (gerada por módulo dedicado) ──
+    const wsContagem = generateContagemSheet(filtered, materials);
     XLSX.utils.book_append_sheet(wb, wsContagem, "Contagem");
 
     XLSX.writeFile(wb, "consolidado_cbmerj.xlsx");
