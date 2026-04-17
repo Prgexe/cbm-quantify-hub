@@ -351,7 +351,6 @@ function isRepeatedHeaderRow(row: unknown[], matches: HeaderMatch[]) {
 
 function createEmptyBaseRecord(): ParsedImportRecord {
   return {
-    QTD: "",
     AREA: "",
     UNIDADE: "",
     POSTO_GRAD: "",
@@ -360,6 +359,15 @@ function createEmptyBaseRecord(): ParsedImportRecord {
     RG: "",
     materiais: {},
   };
+}
+
+export function normalizeArea(value: unknown) {
+  const display = normalizeDisplayText(value);
+  if (!display) return "";
+  // "CBA X - SALVAMENTOS MARÍTIMOS" → "CBA X"
+  const cbaMatch = display.match(/CBA\s+([IVXLCDM\d]+)/i);
+  if (cbaMatch) return `CBA ${cbaMatch[1].toUpperCase()}`;
+  return display;
 }
 
 export function normalizePostoGraduacao(value: unknown) {
@@ -386,6 +394,7 @@ export function normalizeBaseFieldValue(field: CanonicalBaseField, value: unknow
   if (!text) return "";
 
   if (field === "POSTO_GRAD") return normalizePostoGraduacao(text);
+  if (field === "AREA") return normalizeArea(text);
   if (field === "RG") return stringifyCell(value).replace(/\.0+$/, "").trim();
   return text;
 }
