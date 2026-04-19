@@ -94,10 +94,22 @@ const MATERIAL_ALIASES: Record<string, string[]> = {
   "CAMISETA GV": ["CAMISETA GV", "CAMISETA DE GV"],
   "CAMISA UV": ["CAMISA UV", "CAMISA U.V", "CAMISA U.V PARA GV", "CAMISA UV PARA GV"],
   "SHORT JOHN": ["SHORT JOHN"],
-  "SHORT GMAR": ["SHORT GMAR", "SHORT G MAR", "SHORT"],
-  "SUNGA GMAR": ["SUNGA GMAR", "SUNGA G MAR", "SUNGA"],
-  BUSTIE: ["BUSTIE", "BUSTIÉ", "BUSTIE "],
-  "SUNGA FEMININA": ["SUNGA FEMININA", "SUNGA FEM", "SUNGA FEM.", "SUNGA FEMIN."],
+  "SHORT GMAR": [
+    "SHORT GMAR", "SHORT G MAR", "SHORT",
+    "SHORT TAMANHO", "SHORT GMAR TAMANHO", "SHORT G MAR TAMANHO",
+  ],
+  "SUNGA GMAR": [
+    "SUNGA GMAR", "SUNGA G MAR", "SUNGA",
+    "SUNGA TAMANHO", "SUNGA GMAR TAMANHO", "SUNGA G MAR TAMANHO",
+  ],
+  BUSTIE: [
+    "BUSTIE", "BUSTIE", "BUSTIE ",
+    "BUSTIE TAMANHO", "BUSTIE TAMANHO",
+  ],
+  "SUNGA FEMININA": [
+    "SUNGA FEMININA", "SUNGA FEM", "SUNGA FEM.", "SUNGA FEMIN.",
+    "SUNGA FEM. TAMANHO", "SUNGA FEMININA TAMANHO", "SUNGA FEM TAMANHO",
+  ],
 };
 
 const POSTO_PATTERNS: Array<{ canonical: string; patterns: string[] }> = [
@@ -113,7 +125,7 @@ const POSTO_PATTERNS: Array<{ canonical: string; patterns: string[] }> = [
   { canonical: "2º Sargento", patterns: ["2 SGT", "2ºSGT", "2º SGT", "SEGUNDO SARGENTO", "2 SARGENTO"] },
   { canonical: "3º Sargento", patterns: ["3 SGT", "3ºSGT", "3º SGT", "TERCEIRO SARGENTO", "3 SARGENTO"] },
   { canonical: "Cabo", patterns: ["CABO", "CB"] },
-  { canonical: "Soldado", patterns: ["SOLDADO", "SD"] },
+  { canonical: "Soldado", patterns: ["SOLDADO", "SD", "SD BM", "SDBM", "SOLDADO BM"] },
 ];
 
 const POSTO_ORDER: Record<string, number> = {
@@ -244,6 +256,12 @@ function canonicalizeMaterialHeader(header: string): string | null {
   if (!lookup || IGNORED_HEADER_LABELS.has(lookup)) return null;
   if (matchBaseField(header)) return null;
 
+  // Ignora células muito longas — são títulos de planilha, não cabeçalhos de coluna
+  if (display.length > 60) return null;
+
+  // Ignora células puramente numéricas (ex: coluna QTD lida como material)
+  if (/^[0-9]+$/.test(lookup)) return null;
+
   let best: { canonical: string; score: number } | null = null;
   for (const [canonical, aliases] of Object.entries(MATERIAL_ALIASES)) {
     for (const alias of aliases) {
@@ -253,7 +271,8 @@ function canonicalizeMaterialHeader(header: string): string | null {
   }
 
   if (best && best.score >= 0.74) return best.canonical;
-  if (/^[0-9]+$/.test(lookup)) return null;
+
+  // Só aceita como material dinâmico se não parecer número ou texto de título
   return display;
 }
 
@@ -265,6 +284,9 @@ function mergeHeaderRows(top: unknown[] = [], bottom: unknown[] = []) {
 
     if (!first) return second;
     if (!second) return first;
+    // Descarta células muito longas (títulos de planilha) antes de mesclar
+    if (first.length > 60) return second;
+    if (second.length > 60) return first;
     if (IGNORED_HEADER_LABELS.has(normalizeLookup(first))) return second;
     if (IGNORED_HEADER_LABELS.has(normalizeLookup(second))) return first;
     if (normalizeLookup(first) === normalizeLookup(second)) return first;

@@ -77,19 +77,10 @@ export default function ConsolidatedTab() {
   const currentPage = Math.min(page, totalPages - 1);
   const paged = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
-  // ── Exportação: aba por CBA + Consolidado Geral via fórmulas + Contagem ──
+  // ── Exportação: aba por CBA + aba geral + aba Contagem (formato pivot) ──
   const exportXlsx = () => {
     const wb = XLSX.utils.book_new();
 
-    // Mapa de normalização de tamanhos (aliases → canônico)
-    const SIZE_NORMALIZE: Record<string, string> = {
-      XGG: "XG", XXG: "XG", EXG: "XG", EG: "XG", "3G": "XG",
-      X: "", XX: "", XXX: "", NA: "", "-": "--",
-    };
-
-    const normalizeMat = (v: string) => SIZE_NORMALIZE[v.trim().toUpperCase()] ?? v;
-
-    // Converte um registro em linha para exportação, normalizando tamanhos
     const toRow = (record: MilitarRecord) => ({
       "ÁREA": record.AREA,
       UNIDADE: record.UNIDADE,
@@ -97,25 +88,14 @@ export default function ConsolidatedTab() {
       QUADRO: record.QUADRO,
       "NOME COMPLETO": record.NOME_COMPLETO,
       RG: record.RG,
-      ...Object.fromEntries(
-        materials.map((material) => [
-          material,
-          normalizeMat(String(record.materiais[material] ?? "")),
-        ])
-      ),
+      ...Object.fromEntries(materials.map((material) => [material, record.materiais[material] ?? ""])),
     });
 
     const colWidths = columns
       .filter((c) => c.id !== "ORIGEM")
       .map((column) => ({ wch: Math.max(10, Math.round(parseInt(column.width, 10) / 8) || 14) }));
 
-    // Cabeçalhos das colunas exportadas (para fórmulas de referência)
-    const exportHeaders = [
-      "ÁREA", "UNIDADE", "POSTO/GRAD", "QUADRO", "NOME COMPLETO", "RG",
-      ...materials,
-    ];
-
-    // Agrupa por CBA/AREA
+    // Agrupa por CBA/AREA já normalizado pelo importador
     const grouped: Record<string, MilitarRecord[]> = {};
     for (const r of filtered) {
       const key = r.AREA || "Sem Área";
@@ -123,62 +103,19 @@ export default function ConsolidatedTab() {
       grouped[key].push(r);
     }
 
-    // Rastreia quantas linhas de dados cada aba tem (para montar fórmulas)
-    const areaRowCount: Record<string, number> = {};
-
-    // ── Uma aba por CBA ────────────────────────────────────────────────────
-    const numCols = exportHeaders.length;
-    const lastColLetter = XLSX.utils.encode_col(numCols - 1);
-    const autofilter = { ref: `A1:${lastColLetter}1` };
-
+    // Uma aba por CBA
     for (const [area, rows] of Object.entries(grouped).sort()) {
-      areaRowCount[area] = rows.length;
       const ws = XLSX.utils.json_to_sheet(rows.map(toRow));
       ws["!cols"] = colWidths;
-      ws["!autofilter"] = autofilter;
       XLSX.utils.book_append_sheet(wb, ws, area.substring(0, 31));
     }
 
-    // ── Aba "Consolidado Geral" via fórmulas referenciando as abas CBA ────
-    // Cada linha do Consolidado Geral é ='CBA X'!A2, ='CBA X'!B2 ... etc.
-    // Assim qualquer edição numa aba CBA reflete automaticamente aqui.
-    const wsAll: XLSX.WorkSheet = { "!type": "sheet" };
-
-    // Cabeçalho (linha 1)
-    exportHeaders.forEach((h, c) => {
-      const addr = XLSX.utils.encode_cell({ r: 0, c });
-      wsAll[addr] = { t: "s", v: h };
-    });
-
-    let currentRow = 1; // linha Excel 2 em diante (0-indexed)
-
-    for (const [area, rows] of Object.entries(grouped).sort()) {
-      const sheetName = area.substring(0, 31);
-      // Escapa aspas simples no nome da aba para fórmulas Excel
-      const sheetRef = `'${sheetName.replace(/'/g, "''")}'`;
-
-      rows.forEach((_, rowIdx) => {
-        const srcRow = rowIdx + 2; // linha 1 = cabeçalho na aba CBA, dados a partir de 2
-        exportHeaders.forEach((_, c) => {
-          const colLetter = XLSX.utils.encode_col(c);
-          const addr = XLSX.utils.encode_cell({ r: currentRow, c });
-          wsAll[addr] = {
-            t: "n",
-            f: `${sheetRef}!${colLetter}${srcRow}`,
-            v: 0,
-          };
-        });
-        currentRow++;
-      });
-    }
-
-    const lastCellAll = XLSX.utils.encode_cell({ r: currentRow - 1, c: numCols - 1 });
-    wsAll["!ref"] = `A1:${lastCellAll}`;
+    // Aba consolidada geral
+    const wsAll = XLSX.utils.json_to_sheet(filtered.map(toRow));
     wsAll["!cols"] = colWidths;
-    wsAll["!autofilter"] = autofilter;
     XLSX.utils.book_append_sheet(wb, wsAll, "Consolidado Geral");
 
-    // ── Aba CONTAGEM (fórmulas COUNTIFS referenciando Consolidado Geral) ──
+    // ── Aba CONTAGEM (gerada por módulo dedicado) ──
     const wsContagem = generateContagemSheet(filtered, materials);
     XLSX.utils.book_append_sheet(wb, wsContagem, "Contagem");
 

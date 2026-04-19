@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { DataProvider } from "@/contexts/DataContext";
 import AppLayout, { TabId } from "@/components/AppLayout";
 import UploadTab from "./UploadTab";
