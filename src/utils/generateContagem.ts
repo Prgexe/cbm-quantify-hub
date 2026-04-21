@@ -36,8 +36,19 @@ const UNIT_STYLE = {
   fill: { fgColor: { rgb: "D6E4F0" }, patternType: "solid" },
   alignment: { horizontal: "center", vertical: "center", wrapText: true },
   border: {
-    top: { style: "medium", color: { rgb: "555555" } }, bottom: { style: "medium", color: { rgb: "555555" } },
-    left: { style: "medium", color: { rgb: "555555" } }, right: { style: "medium", color: { rgb: "555555" } },
+    top: { style: "medium", color: { rgb: "2E6DA4" } }, bottom: { style: "thin", color: { rgb: "AAAAAA" } },
+    left: { style: "medium", color: { rgb: "2E6DA4" } }, right: { style: "medium", color: { rgb: "2E6DA4" } },
+  },
+};
+
+// Estilo das linhas internas do bloco de unidade (sem borda superior grossa)
+const UNIT_STYLE_INNER = {
+  font: { bold: true, name: "Arial", sz: 10 },
+  fill: { fgColor: { rgb: "D6E4F0" }, patternType: "solid" },
+  alignment: { horizontal: "center", vertical: "center", wrapText: true },
+  border: {
+    top: { style: "thin", color: { rgb: "AAAAAA" } }, bottom: { style: "thin", color: { rgb: "AAAAAA" } },
+    left: { style: "medium", color: { rgb: "2E6DA4" } }, right: { style: "medium", color: { rgb: "2E6DA4" } },
   },
 };
 
@@ -153,7 +164,6 @@ export function generateContagemSheet(
 
   // ── 5. Monta a worksheet ─────────────────────────────────────────────────
   const ws: XLSX.WorkSheet = { "!type": "sheet" };
-  const merges: XLSX.Range[] = [];
   const numCols = 2 + sizes.length + 1; // Unidade + Material + tamanhos + TOTAL
 
   // Linha de início dos dados (0-indexed para o código, 1-indexed nas fórmulas Excel)
@@ -166,63 +176,53 @@ export function generateContagemSheet(
   });
   currentRow++;
 
-  // Blocos por unidade
+  // Blocos por unidade — SEM mesclagem: repete o nome em cada linha
+  // (células mescladas quebram o filtro do Excel)
   for (const unidade of unidades) {
     const blockStart = currentRow;
 
     materials.forEach((material, mIdx) => {
       const isAlt = currentRow % 2 === 0;
-      const excelRow = currentRow + 1; // 1-indexed para fórmulas
 
-      // Col 0: Unidade (só preenche na primeira linha do bloco; o restante é mesclado)
+      // Estilo da célula Unidade: borda superior mais grossa na primeira linha do bloco
+      const unitStyleRow = mIdx === 0
+        ? UNIT_STYLE          // primeira linha: borda superior destacada
+        : UNIT_STYLE_INNER;   // demais linhas do bloco: borda interna mais suave
+
+      // Col 0: Unidade — repete em todas as linhas do bloco
       setString(ws, XLSX.utils.encode_cell({ r: currentRow, c: 0 }),
-        mIdx === 0 ? unidade : "", UNIT_STYLE);
+        unidade, unitStyleRow);
 
       // Col 1: Material
       setString(ws, XLSX.utils.encode_cell({ r: currentRow, c: 1 }),
         material, makeMaterialStyle(isAlt));
 
       // Colunas de tamanho: fórmula COUNTIFS
-      const matCol = materialColLetter[material]; // ex: "G"
-      const totalFormulaParts: string[] = [];
+      const matCol = materialColLetter[material];
+      const totalCol = 2 + sizes.length;
 
       sizes.forEach((size, sIdx) => {
         const c = 2 + sIdx;
         const addr = XLSX.utils.encode_cell({ r: currentRow, c });
 
         if (!materialHasSize[material].has(size)) {
-          // Tamanho não existe para este material → "--"
           setString(ws, addr, "--", makeCellStyle(isAlt));
         } else {
-          // COUNTIFS(UNIDADE_col, unidade, MATERIAL_col, tamanho)
           const formula =
             `COUNTIFS(${SRC}!${UNIDADE_COL}$2:${UNIDADE_COL}$${lastDataRow},"${unidade}",` +
             `${SRC}!${matCol}$2:${matCol}$${lastDataRow},"${size}")`;
           setFormula(ws, addr, formula, makeCellStyle(isAlt));
-          totalFormulaParts.push(XLSX.utils.encode_cell({ r: currentRow, c }));
         }
       });
 
-      // Col TOTAL: soma das colunas de tamanho desta linha
-      const totalCol = 2 + sizes.length;
+      // Col TOTAL
       const totalAddr = XLSX.utils.encode_cell({ r: currentRow, c: totalCol });
-      if (totalFormulaParts.length > 0) {
-        setFormula(ws, totalAddr,
-          `SUM(${XLSX.utils.encode_cell({ r: currentRow, c: 2 })}:${XLSX.utils.encode_cell({ r: currentRow, c: totalCol - 1 })})`,
-          makeTotalStyle(isAlt));
-      } else {
-        setNumber(ws, totalAddr, 0, makeTotalStyle(isAlt));
-      }
+      setFormula(ws, totalAddr,
+        `SUM(${XLSX.utils.encode_cell({ r: currentRow, c: 2 })}:${XLSX.utils.encode_cell({ r: currentRow, c: totalCol - 1 })})`,
+        makeTotalStyle(isAlt));
 
       currentRow++;
     });
-
-    const blockEnd = currentRow - 1;
-
-    // Mescla coluna Unidade para todo o bloco
-    if (blockEnd > blockStart) {
-      merges.push({ s: { r: blockStart, c: 0 }, e: { r: blockEnd, c: 0 } });
-    }
   }
 
   // ── Linha vazia de separação ─────────────────────────────────────────────
@@ -271,14 +271,6 @@ export function generateContagemSheet(
 
   const totalGeralEnd = currentRow - 1;
 
-  // Mescla coluna 0 do bloco TOTAL GERAL
-  if (totalGeralEnd > totalGeralStart) {
-    merges.push({
-      s: { r: totalGeralHeaderRow, c: 0 },
-      e: { r: totalGeralEnd, c: 0 },
-    });
-  }
-
   // ── Metadados da sheet ───────────────────────────────────────────────────
   const lastCell = XLSX.utils.encode_cell({ r: currentRow - 1, c: numCols - 1 });
   ws["!ref"] = `A1:${lastCell}`;
@@ -290,7 +282,6 @@ export function generateContagemSheet(
     { wch: 10 },
   ];
 
-  ws["!merges"] = merges;
 
   const lastColLetter = XLSX.utils.encode_col(numCols - 1);
   ws["!autofilter"] = { ref: `A1:${lastColLetter}1` };
