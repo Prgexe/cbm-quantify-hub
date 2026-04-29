@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import type { MilitarRecord } from "@/contexts/DataContext";
+import { getOrderedUnidades } from "@/utils/unitOrder";
 
 // Tamanhos válidos na ordem de exibição
 const SIZE_ORDER = ["PP", "P", "M", "G", "GG", "XG"];
@@ -26,7 +27,8 @@ const TOTAL_GERAL_STYLE = {
   fill: { fgColor: { rgb: "1D4E2A" }, patternType: "solid" },
   alignment: { horizontal: "center", vertical: "center" },
   border: {
-    top: { style: "thin", color: { rgb: "888888" } }, bottom: { style: "thin", color: { rgb: "888888" } },
+    top: { style: "medium", color: { rgb: "000000" } }, // borda superior grossa separa do bloco anterior
+    bottom: { style: "thin", color: { rgb: "888888" } },
     left: { style: "thin", color: { rgb: "888888" } }, right: { style: "thin", color: { rgb: "888888" } },
   },
 };
@@ -124,13 +126,10 @@ export function generateContagemSheet(
     if (!sizes.includes(s)) sizes.push(s);
   }
 
-  // ── 2. Unidades únicas na ordem de aparição ──────────────────────────────
-  const unidades: string[] = [];
-  const seen = new Set<string>();
-  for (const r of records) {
-    const u = r.UNIDADE || r.AREA || "Sem Unidade";
-    if (!seen.has(u)) { seen.add(u); unidades.push(u); }
-  }
+  // ── 2. Unidades únicas na ordem hierárquica definida em unitOrder.ts ───────
+  const unidades = getOrderedUnidades(
+    records.map(r => ({ AREA: r.AREA || "", UNIDADE: r.UNIDADE || r.AREA || "Sem Unidade" }))
+  );
 
   // ── 3. Detecta quais (material × tamanho) existem no dataset ─────────────
   // Para saber quando colocar "--" em vez de fórmula
@@ -225,8 +224,7 @@ export function generateContagemSheet(
     });
   }
 
-  // ── Linha vazia de separação ─────────────────────────────────────────────
-  currentRow++;
+  // ── Sem linha vazia: apenas borda superior no cabeçalho TOTAL GERAL ───────
   const totalGeralHeaderRow = currentRow;
 
   // ── Cabeçalho TOTAL GERAL ────────────────────────────────────────────────

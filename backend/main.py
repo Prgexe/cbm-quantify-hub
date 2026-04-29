@@ -322,15 +322,21 @@ async def get_info(file: UploadFile = File(...)):
         unidades = set()
         row_count = 0
         data_start = 4
+        unidade_col_idx = 2  # fallback
+        # Detecta linha do cabeçalho e coluna UNIDADE pelo nome
         for ri, row in enumerate(ws.iter_rows(max_row=10, values_only=True), 1):
             if row and row[0] is not None and str(row[0]).strip().upper() == "QTD":
                 data_start = ri + 1
+                for ci, cell_val in enumerate(row):
+                    if cell_val and str(cell_val).strip().upper() in ("UNIDADE", "UNIDADE (FINAL)"):
+                        unidade_col_idx = ci
+                        break
                 break
         for row in ws.iter_rows(min_row=data_start, values_only=True):
             if row and any(v is not None for v in row):
                 row_count += 1
-                if row[2]:
-                    unidades.add(str(row[2]).strip())
+                if unidade_col_idx < len(row) and row[unidade_col_idx]:
+                    unidades.add(str(row[unidade_col_idx]).strip())
         sheets.append({
             "name": name,
             "rows": row_count + 3,

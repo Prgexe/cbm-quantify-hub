@@ -419,12 +419,100 @@ export function normalizeMaterialValue(value: unknown) {
   return SIZE_MAP[lookup] ?? display;
 }
 
+
+// ─── Mapa canônico de unidades ────────────────────────────────────────────────
+// Normaliza qualquer variação de nome para o nome oficial do CBMERJ.
+// Adicione novas variações conforme aparecerem nas planilhas.
+const CANONICAL_UNIT: Record<string, string> = {
+  // CBA X - GMAREs
+  "1 GMAR":                         "1º GMAR - Botafogo",
+  "1 GMAR BOTAFOGO":                "1º GMAR - Botafogo",
+  "1GMAR":                          "1º GMAR - Botafogo",
+  "1 GMar":                         "1º GMAR - Botafogo",
+  "2 GMAR":                         "2º GMAR - Barra da Tijuca",
+  "2 GMAR BARRA DA TIJUCA":         "2º GMAR - Barra da Tijuca",
+  "2GMAR":                          "2º GMAR - Barra da Tijuca",
+  "2 GMar":                         "2º GMAR - Barra da Tijuca",
+  "3 GMAR":                         "3º GMAR - Copacabana",
+  "3 GMAR COPACABANA":              "3º GMAR - Copacabana",
+  "3GMAR":                          "3º GMAR - Copacabana",
+  "3 GMar":                         "3º GMAR - Copacabana",
+  "4 GMAR":                         "4º GMAR - Itaipu",
+  "4 GMAR ITAIPU":                  "4º GMAR - Itaipu",
+  "4GMAR":                          "4º GMAR - Itaipu",
+  "4 GMar":                         "4º GMAR - Itaipu",
+  // CBA X - DBMs
+  "DBM 1 M":                        "DBM 1/M - Paquetá",
+  "DBM1 M":                         "DBM 1/M - Paquetá",
+  "DBM1M":                          "DBM 1/M - Paquetá",
+  "DBM 1 M PAQUETA":                "DBM 1/M - Paquetá",
+  "DBM 1 M PAQUETÁ":                "DBM 1/M - Paquetá",
+  "DBM 2 M":                        "DBM 2/M - Piscinão de Ramos",
+  "DBM2 M":                         "DBM 2/M - Piscinão de Ramos",
+  "DBM2M":                          "DBM 2/M - Piscinão de Ramos",
+  "DBM 2 M PISCINA DE RAMOS":       "DBM 2/M - Piscinão de Ramos",
+  "DBM 2 M PISCINO DE RAMOS":       "DBM 2/M - Piscinão de Ramos",
+  "DBM 2 M PISCINA0 DE RAMOS":      "DBM 2/M - Piscinão de Ramos",
+  "DBM 3 M":                        "DBM 3/M - Recreio dos Bandeirantes",
+  "DBM3 M":                         "DBM 3/M - Recreio dos Bandeirantes",
+  "DBM3M":                          "DBM 3/M - Recreio dos Bandeirantes",
+  "DBM 3 M RECREIO":                "DBM 3/M - Recreio dos Bandeirantes",
+  "DBM 3 M RECREIO DOS BANDEIRANTES": "DBM 3/M - Recreio dos Bandeirantes",
+  "DBM 4 M":                        "DBM 4/M - Barra de Guaratiba",
+  "DBM4 M":                         "DBM 4/M - Barra de Guaratiba",
+  "DBM4M":                          "DBM 4/M - Barra de Guaratiba",
+  "DBM 4 M BARRA DE GUARATIBA":     "DBM 4/M - Barra de Guaratiba",
+  "DBM 5 M":                        "DBM 5/M - Sepetiba",
+  "DBM5 M":                         "DBM 5/M - Sepetiba",
+  "DBM5M":                          "DBM 5/M - Sepetiba",
+  "DBM 5 M SEPETIBA":               "DBM 5/M - Sepetiba",
+  "DBM5 M SEPETIBA":                "DBM 5/M - Sepetiba",
+  // CBA X - Sede
+  "CBA X SALVAMENTOS MARITIMOS":    "CBA X",
+  "CBA X SALVAMENTOS":              "CBA X",
+  "CBAX":                           "CBA X",
+  // CBA VIII
+  "CBA VIII ATIVIDADES ESPECIALIZADAS": "CBA VIII - Atividades Especializadas",
+  "CBA VIII":                       "CBA VIII - Atividades Especializadas",
+  "2 GSFMA":                        "2º GSFMA",
+  "2GSFMA":                         "2º GSFMA",
+  "GTSAI":                          "GRUPAMENTO TÉCNICO DE SUPRIMENTO DE ÁGUA PARA INCÊNDIO - GTSAI",
+  "GRUPAMENTO TECNICO DE SUPRIMENTO DE AGUA PARA INCENDIO": "GRUPAMENTO TÉCNICO DE SUPRIMENTO DE ÁGUA PARA INCÊNDIO - GTSAI",
+};
+
+/**
+ * Normaliza o nome da unidade para o padrão oficial do CBMERJ.
+ * Ex: "DBM 2/M" → "DBM 2/M - Piscinão de Ramos"
+ *     "1°GMAR- Barra da Tijuca" → "1º GMAR - Botafogo"
+ */
+function normalizeUnidade(text: string): string {
+  // Chave de lookup: remove acentos, substitui °/º por nada, normaliza espaços
+  const key = stripAccents(text.toUpperCase())
+    .replace(/[°º]/g, "")
+    .replace(/[\/]/g, " ")
+    .replace(/[^A-Z0-9]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (CANONICAL_UNIT[key]) return CANONICAL_UNIT[key];
+
+  // Tenta correspondência parcial para variações não mapeadas
+  for (const [pattern, canonical] of Object.entries(CANONICAL_UNIT)) {
+    if (key === pattern || key.startsWith(pattern + " ") || key.endsWith(" " + pattern)) {
+      return canonical;
+    }
+  }
+
+  return text; // mantém o original se não encontrar
+}
+
 export function normalizeBaseFieldValue(field: CanonicalBaseField, value: unknown) {
   const text = normalizeDisplayText(value);
   if (!text) return "";
 
   if (field === "POSTO_GRAD") return normalizePostoGraduacao(text);
   if (field === "AREA") return normalizeArea(text);
+  if (field === "UNIDADE") return normalizeUnidade(text);
   if (field === "RG") return stringifyCell(value).replace(/\.0+$/, "").trim();
   return text;
 }
