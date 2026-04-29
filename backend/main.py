@@ -321,14 +321,17 @@ async def get_info(file: UploadFile = File(...)):
         ws = wb[name]
         unidades = set()
         row_count = 0
-        data_start = 4
-        unidade_col_idx = 2  # fallback
-        # Detecta linha do cabeçalho e coluna UNIDADE pelo nome
+        data_start = 2
+        unidade_col_idx = 1  # fallback: índice 1 = segunda coluna (UNIDADE)
+        # Detecta linha do cabeçalho procurando por UNIDADE ou QTD
         for ri, row in enumerate(ws.iter_rows(max_row=10, values_only=True), 1):
-            if row and row[0] is not None and str(row[0]).strip().upper() == "QTD":
+            if not row: continue
+            row_upper = [str(v or '').strip().upper() for v in row]
+            # Cabeçalho: linha que contém UNIDADE ou QTD
+            if 'UNIDADE' in row_upper or 'UNIDADE (FINAL)' in row_upper or 'QTD' in row_upper:
                 data_start = ri + 1
-                for ci, cell_val in enumerate(row):
-                    if cell_val and str(cell_val).strip().upper() in ("UNIDADE", "UNIDADE (FINAL)"):
+                for ci, val in enumerate(row_upper):
+                    if val in ('UNIDADE', 'UNIDADE (FINAL)'):
                         unidade_col_idx = ci
                         break
                 break
