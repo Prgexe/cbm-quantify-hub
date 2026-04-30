@@ -357,6 +357,7 @@ async def merge(
     individual:  UploadFile = File(...),
     aba_destino: str = Form(""),
     inserir_antes_de: str = Form(""),
+    inserir_modo: str = Form("depois"),
 ):
     consolidada_bytes = await consolidada.read()
     individual_bytes  = await individual.read()
@@ -431,11 +432,17 @@ async def merge(
     insert_row = None
     if inserir_antes_de:
         unidade_col = cons_name_to_col.get("UNIDADE (FINAL)") or cons_name_to_col.get("UNIDADE") or 3
+        first_row = None
+        last_row  = None
         for i in range(data_start_row, ws_dest.max_row + 1):
             val = ws_dest.cell(row=i, column=unidade_col).value
             if val and str(val).strip() == inserir_antes_de:
-                insert_row = i
-                break
+                if first_row is None: first_row = i
+                last_row = i
+        if inserir_modo == "depois" and last_row is not None:
+            insert_row = last_row + 1   # insere após a última linha da unidade
+        elif first_row is not None:
+            insert_row = first_row      # insere antes da primeira linha da unidade
     if insert_row is None:
         insert_row = ws_dest.max_row + 1
 

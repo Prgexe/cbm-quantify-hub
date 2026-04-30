@@ -22,6 +22,7 @@ export default function MergeTab() {
   const [sheets,          setSheets]          = useState<SheetInfo[]>([]);
   const [abaDestino,      setAbaDestino]      = useState("");
   const [inserirAntes,    setInserirAntes]     = useState("");
+  const [inserirModo,    setInserirModo]      = useState<"antes"|"depois">("depois");
   const [step,            setStep]            = useState<Step>("idle");
   const [error,           setError]           = useState("");
   const [downloadUrl,     setDownloadUrl]      = useState("");
@@ -35,6 +36,7 @@ export default function MergeTab() {
     setSheets([]);
     setAbaDestino("");
     setInserirAntes("");
+    setInserirModo("depois");
     setStep("loading_info");
     setError("");
     try {
@@ -80,6 +82,7 @@ export default function MergeTab() {
       fd.append("individual",       individualFile);
       fd.append("aba_destino",      abaDestinoAtual);
       fd.append("inserir_antes_de", inserirAntesAtual);
+      fd.append("inserir_modo",      inserirModo);
 
       const res = await fetch(`${API_URL}/merge`, { method: "POST", body: fd });
       if (!res.ok) throw new Error(await res.text());
@@ -102,6 +105,7 @@ export default function MergeTab() {
     setSheets([]);
     setAbaDestino("");
     setInserirAntes("");
+    setInserirModo("depois");
     setStep("idle");
     setError("");
     setDownloadUrl("");
@@ -179,27 +183,56 @@ export default function MergeTab() {
               </Select>
             </div>
 
-            {/* Inserir antes de */}
+            {/* Posição de inserção */}
             {selectedSheet && (
-              <div>
-                <label className="text-xs font-medium mb-1 block">
-                  Inserir antes de qual unidade?{" "}
-                  <span className="text-muted-foreground">(opcional — vazio = adicionar no final)</span>
-                </label>
-                <Select
-                  value={inserirAntes || "__fim__"}
-                  onValueChange={(v) => setInserirAntes(v === "__fim__" ? "" : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a unidade..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__fim__">— Adicionar no final da aba —</SelectItem>
-                    {selectedSheet.unidades.map((u, i) => (
-                      <SelectItem key={`${u}-${i}`} value={u}>{u}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium mb-1 block">Referência de unidade</label>
+                  <Select
+                    value={inserirAntes || "__fim__"}
+                    onValueChange={(v) => setInserirAntes(v === "__fim__" ? "" : v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a unidade..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__fim__">— Adicionar no final da aba —</SelectItem>
+                      {selectedSheet.unidades.map((u, i) => (
+                        <SelectItem key={`${u}-${i}`} value={u}>{u}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {inserirAntes && (
+                  <div>
+                    <label className="text-xs font-medium mb-2 block">Inserir em relação à unidade</label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setInserirModo("antes")}
+                        className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors ${
+                          inserirModo === "antes"
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background border-input hover:bg-muted"
+                        }`}
+                      >
+                        ↑ Inserir antes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInserirModo("depois")}
+                        className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors ${
+                          inserirModo === "depois"
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background border-input hover:bg-muted"
+                        }`}
+                      >
+                        ↓ Inserir depois
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
