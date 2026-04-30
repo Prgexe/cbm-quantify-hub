@@ -153,14 +153,17 @@ def find_header_rows(raw: list) -> Tuple[int, Dict[int, str], bool]:
     col_map = {}
 
     if is_format_b:
-        # Formato B: row[1] tem colunas fixas, row[2] tem materiais
+        # Formato B: row[1] tem colunas fixas, row[2] tem nomes de materiais
+        # row[2] tem PRIORIDADE sobre row[1] para colunas de material
         for i, c in enumerate(raw[1] or []):
             n = norm(c)
             if n:
                 col_map[i] = n
         for i, c in enumerate(raw[2] or []):
             n = norm(c)
-            if n and i not in col_map:
+            # Sobrescreve SEMPRE que row[2] tem valor — nomes de material
+            # têm prioridade sobre 'TAMANHOS' genérico de row[1]
+            if n:
                 col_map[i] = n
         return 3, col_map, True
     else:
