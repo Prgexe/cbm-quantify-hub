@@ -413,18 +413,25 @@ async def merge(
         else:
             _log.warning(f"[merge] Material '{mat_name}' NÃO encontrado na consolidada!")
 
-    # Coleta areas reais da aba destino
+    # Coleta areas reais da aba destino (coluna ÁREA = índice 0)
+    area_col_idx = 0  # padrão: ÁREA é a primeira coluna
+    unidade_col_name_to_col = cons_name_to_col
+    # Detecta índice correto da coluna ÁREA
+    for col_name, col_idx in cons_name_to_col.items():
+        if col_name in ("AREA", "ÁREA"):
+            area_col_idx = col_idx - 1  # converte para base-0
+            break
+
     areas_consolidada = []
     for row in ws_dest.iter_rows(min_row=data_start_row, values_only=True):
-        if row and row[1]:
-            val = str(row[1]).strip()
+        if row and area_col_idx < len(row) and row[area_col_idx]:
+            val = str(row[area_col_idx]).strip()
             if val and val not in areas_consolidada:
                 areas_consolidada.append(val)
 
-    # Normaliza area e posto
+    # Normaliza area e posto — UNIDADE não deve ser normalizada como área
     for mil in novos:
         mil["AREA"] = normalizar_area(mil.get("AREA", ""), areas_consolidada)
-        mil["UNIDADE"] = normalizar_area(mil.get("UNIDADE", ""), areas_consolidada)
         mil["POSTO_GRAD"] = normalizar_posto(mil.get("POSTO_GRAD", "")) or mil.get("POSTO_GRAD", "")
 
     # Encontra linha de inserção
