@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl.utils import get_column_letter, column_index_from_string
 from copy import copy
 import io
 import re
@@ -519,68 +520,116 @@ async def merge(
     # ── Atualiza aba Contagem (se existir) ────────────────────────────────────
     if "Contagem" in wb_cons.sheetnames:
         ws_cont = wb_cons["Contagem"]
-        unidades_novas = set(m.get("UNIDADE", "") for m in novos if m.get("UNIDADE"))
+
+        # Descobre materiais únicos da Contagem (coluna B, exceto cabeçalho "Material")
+        materiais_contagem = []
+        for i in range(1, ws_cont.max_row + 1):
+            mat = str(ws_cont.cell(i, 2).value or "").strip()
+            if mat and mat != "Material" and mat not in materiais_contagem:
+                materiais_contagem.append(mat)
+
+        # Unidades já existentes na Contagem (col A)
         unidades_existentes = set()
         for i in range(1, ws_cont.max_row + 1):
-            val = ws_cont.cell(row=i, column=1).value
+            val = ws_cont.cell(i, 1).value
             if val:
                 unidades_existentes.add(str(val).strip())
 
+        unidades_novas = set(m.get("UNIDADE", "") for m in novos if m.get("UNIDADE"))
         unidades_para_adicionar = sorted(unidades_novas - unidades_existentes)
 
-        if unidades_para_adicionar:
-            template_unidade = str(ws_cont.cell(row=2, column=1).value or "")
-            template_rows = {}
-            for offset in range(3):
-                template_rows[offset] = {
-                    col: ws_cont.cell(row=2 + offset, column=col).value
-                    for col in range(1, ws_cont.max_column + 1)
-                }
+        if unidades_para_adicionar and materiais_contagem:
+            # Encontra linha de referência para estilos (primeira linha de dados)
+            ref_row_idx = 2
+            ref_cont = list(ws_cont[ref_row_idx]) if ref_row_idx <= ws_cont.max_row else []
 
+            # Detecta mapeamento de material -> coluna do Consolidado Geral
+            # Lê do cabeçalho da aba Consolidado Geral
+            mat_to_cg_col = {}
+            if "Consolidado Geral" in wb_cons.sheetnames:
+                ws_cg = wb_cons["Consolidado Geral"]
+                cg_header = {
+                    str(ws_cg.cell(1, c).value or "").strip().upper(): c
+                    for c in range(1, ws_cg.max_column + 1)
+                }
+                for mat in materiais_contagem:
+                    mat_upper = mat.strip().upper()
+                    if mat_upper in cg_header:
+                        mat_to_cg_col[mat] = get_column_letter(cg_header[mat_upper])
+                    else:
+                        # fuzzy: verifica se nome do material está contido
+                        for h, ci in cg_header.items():
+                            if mat_upper in h or h in mat_upper:
+                                mat_to_cg_col[mat] = get_column_letter(ci)
+                                break
+            last_cg_row = ws_cg.max_row if "Consolidado Geral" in wb_cons.sheetnames else 2000
+
+            # Descobre tamanhos da contagem (colunas entre Material e TOTAL)
+            # Lê do cabeçalho da linha 1 da Contagem
+            sizes_cols = {}  # tamanho -> col_letter
+            for c in range(3, ws_cont.max_column + 1):
+                h = str(ws_cont.cell(1, c).value or "").strip()
+                if h and h != "TOTAL":
+                    sizes_cols[h] = get_column_letter(c)
+                elif h == "TOTAL":
+                    total_col_letter = get_column_letter(c)
+                    break
+
+            # Determina onde inserir na Contagem
             insert_cont = ws_cont.max_row + 1
             if inserir_antes_de:
+                first_ref = last_ref = None
                 for i in range(1, ws_cont.max_row + 1):
-                    val = ws_cont.cell(row=i, column=1).value
+                    val = ws_cont.cell(i, 1).value
                     if val and str(val).strip() == inserir_antes_de:
-                        insert_cont = i
-                        break
+                        if first_ref is None: first_ref = i
+                        last_ref = i
+                if inserir_modo == "depois" and last_ref:
+                    insert_cont = last_ref + 1
+                elif first_ref:
+                    insert_cont = first_ref
 
-            rows_inseridos = len(unidades_para_adicionar) * 3
-            ref_cont = list(ws_cont[max(1, insert_cont - 1)])
+            n_mats = len(materiais_contagem)
+            rows_inseridos = len(unidades_para_adicionar) * n_mats
             ws_cont.insert_rows(insert_cont, amount=rows_inseridos)
 
             current_row = insert_cont
             for unidade in unidades_para_adicionar:
-                for offset in range(3):
-                    rn = current_row + offset
+                for mi, material in enumerate(materiais_contagem):
+                    rn = current_row + mi
+                    # Col 1: Unidade (só na primeira linha do bloco)
+                    ws_cont.cell(rn, 1).value = unidade if mi == 0 else None
+                    # Col 2: Material
+                    ws_cont.cell(rn, 2).value = material
+                    # Colunas de tamanho: fórmulas COUNTIFS -> Consolidado Geral
+                    cg_col = mat_to_cg_col.get(material, "")
+                    for sz, sz_col_letter in sizes_cols.items():
+                        sz_col = column_index_from_string(sz_col_letter)
+                        cell = ws_cont.cell(rn, sz_col)
+                        if cg_col:
+                            cell.value = (
+                                f"=COUNTIFS('Consolidado Geral'!B$2:B${last_cg_row},"
+                                f"\"{unidade}\",'Consolidado Geral'!{cg_col}$2:{cg_col}${last_cg_row},"
+                                f"\"{sz}\")"
+                            )
+                        else:
+                            cell.value = "--"
+                    # Coluna TOTAL
+                    last_sz_col = max(column_index_from_string(c) for c in sizes_cols.values())
+                    first_sz_col = min(column_index_from_string(c) for c in sizes_cols.values())
+                    tot_col = last_sz_col + 1
+                    ws_cont.cell(rn, tot_col).value = (
+                        f"=SUM({get_column_letter(first_sz_col)}{rn}:{get_column_letter(last_sz_col)}{rn})"
+                    )
+                    # Copia estilos da linha de referência
                     for col in range(1, ws_cont.max_column + 1):
-                        tmpl_val = template_rows[offset].get(col)
-                        cell = ws_cont.cell(row=rn, column=col)
-                        if col == 1:
-                            cell.value = unidade if offset == 0 else None
-                        elif col == 2:
-                            cell.value = tmpl_val
-                        elif isinstance(tmpl_val, str) and tmpl_val.startswith("="):
-                            new_f = tmpl_val
-                            if template_unidade:
-                                new_f = new_f.replace(f'"{template_unidade}"', f'"{unidade}"')
-                            new_f = re.sub(r"'[^']*'!", f"'{aba_destino}'!", new_f)
-                            new_f = re.sub(r"=SUM\(C\d+:I\d+\)", f"=SUM(C{rn}:I{rn})", new_f)
-                            cell.value = new_f
-                        if col <= len(ref_cont):
-                            if ref_cont[col-1].font:      cell.font      = copy(ref_cont[col-1].font)
-                            if ref_cont[col-1].alignment: cell.alignment = copy(ref_cont[col-1].alignment)
-                            if ref_cont[col-1].border:    cell.border    = copy(ref_cont[col-1].border)
-                    current_row += 3
-
-            for r in range(1, ws_cont.max_row + 1):
-                cell_k = ws_cont.cell(row=r, column=11)
-                val = str(cell_k.value or "")
-                if not val.startswith("=SUM"):
-                    continue
-                m_sum = re.match(r"=SUM\(C(\d+):I(\d+)\)(.*)", val)
-                if m_sum and int(m_sum.group(1)) != r:
-                    cell_k.value = f"=SUM(C{r}:I{r}){m_sum.group(3)}"
+                        if col <= len(ref_cont) and ref_cont[col-1].has_style:
+                            c = ws_cont.cell(rn, col)
+                            c.font      = copy(ref_cont[col-1].font)
+                            c.alignment = copy(ref_cont[col-1].alignment)
+                            c.border    = copy(ref_cont[col-1].border)
+                            c.fill      = copy(ref_cont[col-1].fill)
+                current_row += n_mats
 
     # ── Atualiza Resumo Geral (se existir) ────────────────────────────────────
     if "Resumo Geral" in wb_cons.sheetnames and "Contagem" in wb_cons.sheetnames:
