@@ -79,21 +79,41 @@ def get_color(ws, row_idx: int) -> str:
         return "FFFFFF"
 
 POSTO_MAP = {
-    "CEL": "CORONEL", "COR": "CORONEL",
-    "TEN CEL": "TENENTE CORONEL", "TENCEL": "TENENTE CORONEL",
-    "TEM CEL": "TENENTE CORONEL", "TEMCEL": "TENENTE CORONEL",
-    "TC": "TENENTE CORONEL", "T CEL": "TENENTE CORONEL",
-    "TENENTE-CORONEL": "TENENTE CORONEL",
-    "MAJ": "MAJOR",
-    "CAP": "CAPITAO",
-    "TEN": "TENENTE",
-    "1 TEN": "1º TENENTE", "1TEN": "1º TENENTE", "1º TEN": "1º TENENTE",
-    "2 TEN": "2º TENENTE", "2TEN": "2º TENENTE", "2º TEN": "2º TENENTE",
-    "SUBTEN": "SUBTENENTE", "ST": "SUBTENENTE", "SUB TEN": "SUBTENENTE", "SUB-TEN": "SUBTENENTE",
-    "1 SGT": "1º SARGENTO", "1SGT": "1º SARGENTO", "1º SGT": "1º SARGENTO", "1° SGT": "1º SARGENTO",
-    "2 SGT": "2º SARGENTO", "2SGT": "2º SARGENTO", "2º SGT": "2º SARGENTO", "2° SGT": "2º SARGENTO",
-    "3 SGT": "3º SARGENTO", "3SGT": "3º SARGENTO", "3º SGT": "3º SARGENTO", "3° SGT": "3º SARGENTO",
-    "CB": "CABO", "SD": "SOLDADO", "SOL": "SOLDADO",
+    # Coronel
+    "CEL": "Coronel", "COR": "Coronel", "CORONEL": "Coronel",
+    # Tenente Coronel
+    "TEN CEL": "Tenente Coronel", "TENCEL": "Tenente Coronel",
+    "TEM CEL": "Tenente Coronel", "TEMCEL": "Tenente Coronel",
+    "TC": "Tenente Coronel", "T CEL": "Tenente Coronel",
+    "TENENTE-CORONEL": "Tenente Coronel", "TENENTE CORONEL": "Tenente Coronel",
+    # Major
+    "MAJ": "Major", "MAJOR": "Major",
+    # Capitão
+    "CAP": "Capitão", "CAPITAO": "Capitão", "CAPITÃO": "Capitão",
+    # Tenentes
+    "1 TEN": "1º Tenente", "1TEN": "1º Tenente", "1º TEN": "1º Tenente", "1° TEN": "1º Tenente",
+    "PRIMEIRO TENENTE": "1º Tenente", "1 TENENTE": "1º Tenente",
+    "2 TEN": "2º Tenente", "2TEN": "2º Tenente", "2º TEN": "2º Tenente", "2° TEN": "2º Tenente",
+    "SEGUNDO TENENTE": "2º Tenente", "2 TENENTE": "2º Tenente",
+    "TEN": "Tenente", "TENENTE": "Tenente",
+    # Subtenente
+    "SUBTEN": "Subtenente", "ST": "Subtenente", "SUB TEN": "Subtenente",
+    "SUB-TEN": "Subtenente", "SUBTENENTE": "Subtenente",
+    # Sargentos
+    "1 SGT": "1º Sargento", "1SGT": "1º Sargento", "1º SGT": "1º Sargento", "1° SGT": "1º Sargento",
+    "PRIMEIRO SARGENTO": "1º Sargento", "1 SARGENTO": "1º Sargento", "1º SARGENTO": "1º Sargento",
+    "2 SGT": "2º Sargento", "2SGT": "2º Sargento", "2º SGT": "2º Sargento", "2° SGT": "2º Sargento",
+    "SEGUNDO SARGENTO": "2º Sargento", "2 SARGENTO": "2º Sargento", "2º SARGENTO": "2º Sargento",
+    "3 SGT": "3º Sargento", "3SGT": "3º Sargento", "3º SGT": "3º Sargento", "3° SGT": "3º Sargento",
+    "TERCEIRO SARGENTO": "3º Sargento", "3 SARGENTO": "3º Sargento", "3º SARGENTO": "3º Sargento",
+    # Cabo
+    "CB": "Cabo", "CABO": "Cabo",
+    # Soldado e variações temporárias
+    "SD": "Soldado", "SOL": "Soldado", "SOLDADO": "Soldado",
+    "SD BM": "Soldado", "SDBM": "Soldado", "SOLDADO BM": "Soldado",
+    "SD TEMP": "Soldado", "SDTEMP": "Soldado", "SD TEMPORARIO": "Soldado",
+    "SD TEMPORÁRIO": "Soldado", "SOLDADO TEMPORARIO": "Soldado",
+    "SOLDADO TEMPORÁRIO": "Soldado", "RECRUTA": "Soldado", "ALUNO": "Soldado",
 }
 
 def normalizar_posto(posto):
