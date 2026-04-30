@@ -245,15 +245,15 @@ def read_individual_sheet(ws) -> Tuple[List[dict], List[str]]:
 def read_consolidada_header(ws) -> Tuple[int, Dict[int, str], Dict[str, int]]:
     """
     Lê o cabeçalho da aba da consolidada.
-    Retorna:
-    - header_row: número da linha do cabeçalho
-    - col_map: {col_index: col_name}
-    - name_to_col: {col_name_upper: col_index}
+    Detecta automaticamente a linha do cabeçalho procurando por
+    colunas-chave como ÁREA, UNIDADE, NOME COMPLETO ou QTD.
     """
-    header_row = 3  # default
+    header_row = 1  # default
+    KEY_HEADERS = {"QTD", "AREA", "ÁREA", "UNIDADE", "UNIDADE (FINAL)", "NOME COMPLETO", "NOME_COMPLETO"}
     for ri in range(1, 10):
-        v = ws.cell(row=ri, column=1).value
-        if v is not None and norm(v) == "QTD":
+        row_vals = [norm(ws.cell(row=ri, column=c).value) for c in range(1, min(ws.max_column+1, 12))]
+        matches = sum(1 for v in row_vals if v in KEY_HEADERS)
+        if matches >= 2:  # linha com pelo menos 2 colunas conhecidas = cabeçalho
             header_row = ri
             break
 
@@ -413,25 +413,18 @@ async def merge(
         else:
             _log.warning(f"[merge] Material '{mat_name}' NÃO encontrado na consolidada!")
 
-    # Coleta areas reais da aba destino (coluna ÁREA = índice 0)
-    area_col_idx = 0  # padrão: ÁREA é a primeira coluna
-    unidade_col_name_to_col = cons_name_to_col
-    # Detecta índice correto da coluna ÁREA
-    for col_name, col_idx in cons_name_to_col.items():
-        if col_name in ("AREA", "ÁREA"):
-            area_col_idx = col_idx - 1  # converte para base-0
-            break
-
+    # Coleta areas reais da aba destino
     areas_consolidada = []
     for row in ws_dest.iter_rows(min_row=data_start_row, values_only=True):
-        if row and area_col_idx < len(row) and row[area_col_idx]:
-            val = str(row[area_col_idx]).strip()
+        if row and row[1]:
+            val = str(row[1]).strip()
             if val and val not in areas_consolidada:
                 areas_consolidada.append(val)
 
-    # Normaliza area e posto — UNIDADE não deve ser normalizada como área
+    # Normaliza area e posto
     for mil in novos:
         mil["AREA"] = normalizar_area(mil.get("AREA", ""), areas_consolidada)
+        mil["UNIDADE"] = normalizar_area(mil.get("UNIDADE", ""), areas_consolidada)
         mil["POSTO_GRAD"] = normalizar_posto(mil.get("POSTO_GRAD", "")) or mil.get("POSTO_GRAD", "")
 
     # Encontra linha de inserção
