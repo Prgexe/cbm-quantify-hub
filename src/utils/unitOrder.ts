@@ -36,6 +36,7 @@ const UNIT_ORDER: Record<string, string[]> = {
   // ── CBA VII ────────────────────────────────────────────────────────────────
   "CBA VII": [
     "26º GBM - PARATY",
+    "DBM 1/26 - PARATY",   // cobre: "DBM 1/26", "DBM1/26"
   ],
 
   // ── CBA VIII ───────────────────────────────────────────────────────────────
@@ -64,6 +65,8 @@ const UNIT_ORDER: Record<string, string[]> = {
     "3º GMAR - Copacabana",         // cobre: "3º GMAR", "3 GMAR"
     // 4º GMAR
     "4º GMAR - Itaipu",             // cobre: "4º GMAR", "4 GMAR"
+    // DBM 1/26 (subordinado ao 26º GBM mas registrado como CBA X)
+    "DBM 1/26",
   ],
 
 };
