@@ -517,6 +517,47 @@ async def merge(
             for col in range(1, ws_dest.max_column + 1):
                 ws_dest.cell(row=new_row, column=col).fill = fill
 
+    # ── Atualiza Consolidado Geral (se existir) ─────────────────────────────────
+    if "Consolidado Geral" in wb_cons.sheetnames:
+        ws_cg = wb_cons["Consolidado Geral"]
+
+        # Lê cabeçalho do Consolidado Geral
+        _, cg_col_map, cg_name_to_col = read_consolidada_header(ws_cg)
+        cg_data_start = list(cg_col_map.keys())[0] if cg_col_map else 1
+        # Detecta header_row do Consolidado Geral
+        for ri in range(1, 10):
+            row_vals = [norm(ws_cg.cell(ri, c).value) for c in range(1, min(ws_cg.max_column+1, 12))]
+            if sum(1 for v in row_vals if v in {"AREA","ÁREA","UNIDADE","NOME COMPLETO","QTD"}) >= 2:
+                cg_header_row = ri
+                break
+        else:
+            cg_header_row = 1
+
+        _, cg_col_map_full, cg_name_to_col_full = read_consolidada_header(ws_cg)
+
+        # Mapeamento de colunas fixas no CG
+        cg_fixed = {}
+        for key in ["AREA","ÁREA","UNIDADE","UNIDADE (FINAL)","POSTO/GRAD","QUADRO","NOME COMPLETO","RG"]:
+            if key in cg_name_to_col_full:
+                cg_fixed[normalize_col_name(key)] = cg_name_to_col_full[key]
+
+        # Mapeamento de materiais no CG
+        cg_mat_cols = {}
+        for mat in all_material_cols:
+            col_idx = fuzzy_match_column(mat, cg_name_to_col_full)
+            if col_idx:
+                cg_mat_cols[mat] = col_idx
+
+        # Adiciona militares ao Consolidado Geral no final
+        for mil in novos:
+            new_row = ws_cg.max_row + 1
+            for key, col_idx in cg_fixed.items():
+                ws_cg.cell(new_row, col_idx).value = mil.get(key, "")
+            for mat, col_idx in cg_mat_cols.items():
+                ws_cg.cell(new_row, col_idx).value = mil.get(mat, "")
+
+        _log.info(f"[merge] {len(novos)} militares adicionados ao Consolidado Geral")
+
     # ── Atualiza aba Contagem (se existir) ────────────────────────────────────
     if "Contagem" in wb_cons.sheetnames:
         ws_cont = wb_cons["Contagem"]
